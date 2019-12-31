@@ -74,7 +74,7 @@ void vecCopyn(bignum * src, bignum * dest, int size)
 
 void vecClear(bignum *n)
 {
-    memset(n->data, 0, VECLEN*(2 * NWORDS + 1) * sizeof(base_t));
+    memset(n->data, 0, VECLEN * (2 * NWORDS + 1) * sizeof(base_t));
     return;
 }
 

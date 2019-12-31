@@ -28,9 +28,6 @@
 # 
 # 
 
-# example: ./phiecm_mic 3333167993564888880148761143224413387253893499733590904285326409482897526834077385885472903035235131 3840 11000 240
-
-
 #--------------------------- flags -------------------------
 CC = gcc-7.3.0
 WARN_FLAGS = -Wall #-W -Wconversion
@@ -57,18 +54,18 @@ ifeq ($(COMPILER),mingw)
 else ifeq ($(COMPILER),gcc)
     CC = gcc
 	CFLAGS += -fopenmp 
-    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/include
-    LIBS = -L/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/projects/gmp-6.0.0a/install/include
+    LIBS = -L/projects/gmp-6.0.0a/install/lib
 else ifeq ($(COMPILER),gcc730)
     CC = gcc-7.3.0
 	CFLAGS += -fopenmp 
-    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/include
-    LIBS = -L/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/projects/gmp-6.0.0a/install/include
+    LIBS = -L/projects/gmp-6.0.0a/install/lib
 else
     CC = icc
 	CFLAGS += -qopenmp
-    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/include
-    LIBS = -L/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/projects/gmp-6.0.0a/install/include
+    LIBS = -L/projects/gmp-6.0.0a/install/lib
 endif
 
 ifdef MAXBITS

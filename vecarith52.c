@@ -121,14 +121,6 @@ __m512i __inline _mm512_mask_sbb_epi52(__m512i a, __mmask8 m, __mmask8 c, __m512
 //#define PRINT_DEBUG 0
 //#define SPRINT_DEBUG 0
 
-#define BLOCKWORDS 4
-#define NBLOCKS (NWORDS / BLOCKWORDS)
-
-#if (NWORDS % BLOCKWORDS) != 0
-#error "MAXBITS must be divisble by (DIGITBITS * 4)"
-#endif
-
-
 #define ACCUM_4X_PROD52_LOHI2 \
 	te0 = _mm512_add_epi64(te0, prod1_e);	\
 	te2 = _mm512_add_epi64(te2, prod2_e);	\
@@ -1391,458 +1383,458 @@ void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
         // or if 'i' is even and NBLOCKS is odd.
         // Block shape 2 if 'i' is odd and NBLOCKS is odd or if 'i' is even
         // and NBLOCKS is even.
-#if NBLOCKS & 1		// NBLOCKS is odd
-
+        if (NBLOCKS & 1)		// NBLOCKS is odd
+        {
             // i odd, block shape 2.
-        if (i & 1)
+            if (i & 1)
+            {
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
+                a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
+                a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
+                a3 = _mm512_load_epi64(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
+
+                b0 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
+                b1 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
+                b2 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
+                b3 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
+                b4 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
+
+                //prod1_e = _mm512_mul_epu32(a0, b0);        // te0
+                //prod1_e = _mm512_mul_epu32(a1, b1);        // te0
+                //prod1_e = _mm512_mul_epu32(a0, b1);        // te2
+                //prod1_e = _mm512_mul_epu32(a1, b2);        // te2
+                {
+                    prod5_ld = _mm512_cvtepu64_pd(a0);
+                    prod1_ld = _mm512_cvtepu64_pd(a1);
+                    prod2_ld = _mm512_cvtepu64_pd(b0);
+                    prod3_ld = _mm512_cvtepu64_pd(b1);
+                    prod4_ld = _mm512_cvtepu64_pd(b2);
+
+                    prod2_hd = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te0/1
+                    prod4_hd = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b2 -> to te2/3
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
+                    prod3_hd = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b1 -> to te2/3
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod4_hd));
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
+
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
+                    prod4_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod4_hd);
+
+                    prod2_ld = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod4_ld = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, prod4_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod3_ld = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod4_ld));
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
+                }
+
+                //prod1_e = _mm512_mul_epu32(a2, b2);        // te0
+                //prod1_e = _mm512_mul_epu32(a2, b3);        // te2
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a2);
+                    prod2_ld = _mm512_cvtepu64_pd(b2);
+                    prod3_ld = _mm512_cvtepu64_pd(b3);
+
+                    prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b2 -> to te0/1
+                    prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b3 -> to te2/3
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
+
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
+
+                    prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
+                }
+
+                // prod1_e = _mm512_mul_epu32(a0, b2);       // te4
+                // prod1_e = _mm512_mul_epu32(a1, b3);       // te4
+                // prod1_e = _mm512_mul_epu32(a0, b3);       // te6
+                // prod1_e = _mm512_mul_epu32(a1, b4);       // te6
+                {
+                    prod5_ld = _mm512_cvtepu64_pd(a0);
+                    prod1_ld = _mm512_cvtepu64_pd(a1);
+                    prod2_ld = _mm512_cvtepu64_pd(b2);
+                    prod3_ld = _mm512_cvtepu64_pd(b3);
+                    prod4_ld = _mm512_cvtepu64_pd(b4);
+
+                    prod2_hd = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b2 -> to te4/5
+                    prod4_hd = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b4 -> to te6/7
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b3 -> to te4/5
+                    prod3_hd = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b3 -> to te6/7
+
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
+                    te7 = _mm512_add_epi64(te7, _mm512_castpd_si512(prod4_hd));
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod1_hd));
+                    te7 = _mm512_add_epi64(te7, _mm512_castpd_si512(prod3_hd));
+
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
+                    prod4_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod4_hd);
+
+                    prod2_ld = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod4_ld = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, prod4_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod3_ld = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                    te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod4_ld));
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod1_ld));
+                    te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod3_ld));
+                }
+
+
+                // all terms so far need to be doubled.  
+                // but to do that we first need to remove all bias
+                // that has been accumulated so far.
+                SUB_BIAS_HI(
+                    k * 4 + 3,
+                    k * 4 + 3,
+                    k * 4 + 2,
+                    k * 4 + 2);
+                SUB_BIAS_LO(
+                    k * 4 + 3,
+                    k * 4 + 3,
+                    k * 4 + 2,
+                    k * 4 + 2);
+
+                // now double
+                te1 = _mm512_slli_epi64(te1, 1);
+                te3 = _mm512_slli_epi64(te3, 1);
+                te5 = _mm512_slli_epi64(te5, 1);
+                te7 = _mm512_slli_epi64(te7, 1);
+                te0 = _mm512_slli_epi64(te0, 1);
+                te2 = _mm512_slli_epi64(te2, 1);
+                te4 = _mm512_slli_epi64(te4, 1);
+                te6 = _mm512_slli_epi64(te6, 1);
+
+                // finally the two non-doubled terms.
+                //prod1_e = _mm512_mul_epu32(a3, a3);    // te0
+                //prod1_e = _mm512_mul_epu32(a2, a2);    // te4
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a3);
+                    prod2_ld = _mm512_cvtepu64_pd(a2);
+
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a3 * a3 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * a2 -> to te4/5
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
+
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                }
+            }
+            else
+            {
+                // i even, block shape 1.
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
+                a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
+                a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
+
+                //k == 0;
+                //prod1_e = _mm512_mul_epu32(a0, a2);      // te0
+                //prod1_e = _mm512_mul_epu32(a0, a1);      // te2
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a0);
+                    prod2_ld = _mm512_cvtepu64_pd(a1);
+                    prod3_ld = _mm512_cvtepu64_pd(a2);
+
+                    prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a2 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a1 -> to te2/3
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod3_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod2_hd));
+
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
+
+                    prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
+                }
+
+                // all terms so far need to be doubled.  
+                // but to do that we first need to remove all bias
+                // that has been accumulated so far.
+                SUB_BIAS_HI(
+                    k * 4 + 1,
+                    k * 4 + 1,
+                    k * 4 + 0,
+                    k * 4 + 0);
+                SUB_BIAS_LO(
+                    k * 4 + 1,
+                    k * 4 + 1,
+                    k * 4 + 0,
+                    k * 4 + 0);
+
+                // now double
+                te1 = _mm512_slli_epi64(te1, 1);
+                te3 = _mm512_slli_epi64(te3, 1);
+                te5 = _mm512_slli_epi64(te5, 1);
+                te7 = _mm512_slli_epi64(te7, 1);
+                te0 = _mm512_slli_epi64(te0, 1);
+                te2 = _mm512_slli_epi64(te2, 1);
+                te4 = _mm512_slli_epi64(te4, 1);
+                te6 = _mm512_slli_epi64(te6, 1);
+
+                // finally the two non-doubled terms.
+                //prod1_e = _mm512_mul_epu32(a1, a1);    // te0
+                //prod1_e = _mm512_mul_epu32(a0, a0);    // te4
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a1);
+                    prod2_ld = _mm512_cvtepu64_pd(a0);
+
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te4/5
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
+
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                }
+            }
+
+        }
+        else				// NBLOCKS is even
         {
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
-            a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
-            a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
-            a3 = _mm512_load_epi64(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
-
-            b0 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
-            b1 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
-            b2 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
-            b3 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
-            b4 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
-
-            //prod1_e = _mm512_mul_epu32(a0, b0);        // te0
-            //prod1_e = _mm512_mul_epu32(a1, b1);        // te0
-            //prod1_e = _mm512_mul_epu32(a0, b1);        // te2
-            //prod1_e = _mm512_mul_epu32(a1, b2);        // te2
+            // i odd, block shape 1.
+            if (i & 1)
             {
-                prod5_ld = _mm512_cvtepu64_pd(a0);
-                prod1_ld = _mm512_cvtepu64_pd(a1);
-                prod2_ld = _mm512_cvtepu64_pd(b0);
-                prod3_ld = _mm512_cvtepu64_pd(b1);
-                prod4_ld = _mm512_cvtepu64_pd(b2);
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);  // {f, b}
+                a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);  // {e, a}
+                a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);  // {d, 9}
 
-                prod2_hd = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te0/1
-                prod4_hd = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b2 -> to te2/3
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
-                prod3_hd = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b1 -> to te2/3
+                //k == 0;
+                //prod1_e = _mm512_mul_epu32(a0, a2);   // te0
+                //prod2_e = _mm512_mul_epu32(a0, a1);   // te2
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a0);
+                    prod2_ld = _mm512_cvtepu64_pd(a1);
+                    prod3_ld = _mm512_cvtepu64_pd(a2);
 
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod4_hd));
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
+                    prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a2 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a1 -> to te2/3
 
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
-                prod4_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod4_hd);
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod3_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod2_hd));
 
-                prod2_ld = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod4_ld = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, prod4_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod3_ld = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
 
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod4_ld));
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
+                    prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
+                }
+
+                // all terms so far need to be doubled.  
+                // but to do that we first need to remove all bias
+                // that has been accumulated so far.
+                SUB_BIAS_HI(
+                    j * 4 + 1,
+                    j * 4 + 1,
+                    j * 4 + 0,
+                    j * 4 + 0);
+                SUB_BIAS_LO(
+                    j * 4 + 1,
+                    j * 4 + 1,
+                    j * 4 + 0,
+                    j * 4 + 0);
+
+                // now double
+                te1 = _mm512_slli_epi64(te1, 1);
+                te3 = _mm512_slli_epi64(te3, 1);
+                te5 = _mm512_slli_epi64(te5, 1);
+                te7 = _mm512_slli_epi64(te7, 1);
+                te0 = _mm512_slli_epi64(te0, 1);
+                te2 = _mm512_slli_epi64(te2, 1);
+                te4 = _mm512_slli_epi64(te4, 1);
+                te6 = _mm512_slli_epi64(te6, 1);
+
+                // finally, accumulate the two non-doubled terms.
+                //prod1_e = _mm512_mul_epu32(a1, a1);       // te0
+                //prod2_e = _mm512_mul_epu32(a0, a0);       // te4
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a1);
+                    prod2_ld = _mm512_cvtepu64_pd(a0);
+
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te4/5
+
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
+
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                }
             }
-
-            //prod1_e = _mm512_mul_epu32(a2, b2);        // te0
-            //prod1_e = _mm512_mul_epu32(a2, b3);        // te2
+            else
             {
-                prod1_ld = _mm512_cvtepu64_pd(a2);
-                prod2_ld = _mm512_cvtepu64_pd(b2);
-                prod3_ld = _mm512_cvtepu64_pd(b3);
+                // i even, block shape 1.
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);		// {f, b}
+                a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);		// {e, a}
+                a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);		// {d, 9}
+                a3 = _mm512_load_epi64(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);		// {c, 8}
 
-                prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b2 -> to te0/1
-                prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b3 -> to te2/3
+                b0 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
+                b1 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
+                b2 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
+                b3 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
+                b4 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
 
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
+                //prod1_e = _mm512_mul_epu32(a0, b0);    // te0
+                //prod2_e = _mm512_mul_epu32(a0, b1);    // te2
+                //prod3_e = _mm512_mul_epu32(a0, b2);    // te4
+                //prod4_e = _mm512_mul_epu32(a0, b3);    // te6
+                //ACCUM_4X_DOUBLED_PROD;
+                VEC_MUL4_ACCUM(a0, b0, b1, b2, b3);
 
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
+                //prod1_e = _mm512_mul_epu32(a1, b1);    // te0
+                //prod2_e = _mm512_mul_epu32(a1, b2);    // te2
+                //prod3_e = _mm512_mul_epu32(a1, b3);    // te4
+                //prod4_e = _mm512_mul_epu32(a1, b4);    // te6
+                //ACCUM_4X_DOUBLED_PROD;
+                VEC_MUL4_ACCUM(a1, b1, b2, b3, b4);
 
-                prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                //prod1_e = _mm512_mul_epu32(a2, b2);    // te0
+                //prod2_e = _mm512_mul_epu32(a2, b3);    // te2
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a2);
+                    prod2_ld = _mm512_cvtepu64_pd(b2);
+                    prod3_ld = _mm512_cvtepu64_pd(b3);
 
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
-            }
+                    prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b2 -> to te0/1
+                    prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b3 -> to te2/3
 
-            // prod1_e = _mm512_mul_epu32(a0, b2);       // te4
-            // prod1_e = _mm512_mul_epu32(a1, b3);       // te4
-            // prod1_e = _mm512_mul_epu32(a0, b3);       // te6
-            // prod1_e = _mm512_mul_epu32(a1, b4);       // te6
-            {
-                prod5_ld = _mm512_cvtepu64_pd(a0);
-                prod1_ld = _mm512_cvtepu64_pd(a1);
-                prod2_ld = _mm512_cvtepu64_pd(b2);
-                prod3_ld = _mm512_cvtepu64_pd(b3);
-                prod4_ld = _mm512_cvtepu64_pd(b4);
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
+                    te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
 
-                prod2_hd = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b2 -> to te4/5
-                prod4_hd = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b4 -> to te6/7
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b3 -> to te4/5
-                prod3_hd = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b3 -> to te6/7
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
+                    prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
 
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
-                te7 = _mm512_add_epi64(te7, _mm512_castpd_si512(prod4_hd));
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod1_hd));
-                te7 = _mm512_add_epi64(te7, _mm512_castpd_si512(prod3_hd));
+                    prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
 
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
-                prod4_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod4_hd);
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
+                    te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
+                }
 
-                prod2_ld = _mm512_fmadd_round_pd(prod5_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod4_ld = _mm512_fmadd_round_pd(prod1_ld, prod4_ld, prod4_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod3_ld = _mm512_fmadd_round_pd(prod5_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                // all terms so far need to be doubled.  
+                // but to do that we first need to remove all bias
+                // that has been accumulated so far.
+                SUB_BIAS_HI(
+                    j * 4 + 3,
+                    j * 4 + 3,
+                    j * 4 + 2,
+                    j * 4 + 2);
+                SUB_BIAS_LO(
+                    j * 4 + 3,
+                    j * 4 + 3,
+                    j * 4 + 2,
+                    j * 4 + 2);
 
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
-                te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod4_ld));
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod1_ld));
-                te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod3_ld));
-            }
+                // now double
+                te1 = _mm512_slli_epi64(te1, 1);
+                te3 = _mm512_slli_epi64(te3, 1);
+                te5 = _mm512_slli_epi64(te5, 1);
+                te7 = _mm512_slli_epi64(te7, 1);
+                te0 = _mm512_slli_epi64(te0, 1);
+                te2 = _mm512_slli_epi64(te2, 1);
+                te4 = _mm512_slli_epi64(te4, 1);
+                te6 = _mm512_slli_epi64(te6, 1);
 
+                // finally, accumulate the two non-doubled terms.
+                //prod1_e = _mm512_mul_epu32(a3, a3);   // te0
+                //prod2_e = _mm512_mul_epu32(a2, a2);   // te4
+                {
+                    prod1_ld = _mm512_cvtepu64_pd(a3);
+                    prod2_ld = _mm512_cvtepu64_pd(a2);
 
-            // all terms so far need to be doubled.  
-            // but to do that we first need to remove all bias
-            // that has been accumulated so far.
-            SUB_BIAS_HI(
-                k * 4 + 3,
-                k * 4 + 3,
-                k * 4 + 2,
-                k * 4 + 2);
-            SUB_BIAS_LO(
-                k * 4 + 3,
-                k * 4 + 3,
-                k * 4 + 2,
-                k * 4 + 2);
+                    prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a3 * a3 -> to te0/1
+                    prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
+                        (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * a2 -> to te4/5
 
-            // now double
-            te1 = _mm512_slli_epi64(te1, 1);
-            te3 = _mm512_slli_epi64(te3, 1);
-            te5 = _mm512_slli_epi64(te5, 1);
-            te7 = _mm512_slli_epi64(te7, 1);
-            te0 = _mm512_slli_epi64(te0, 1);
-            te2 = _mm512_slli_epi64(te2, 1);
-            te4 = _mm512_slli_epi64(te4, 1);
-            te6 = _mm512_slli_epi64(te6, 1);
+                    te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
+                    te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
 
-            // finally the two non-doubled terms.
-            //prod1_e = _mm512_mul_epu32(a3, a3);    // te0
-            //prod1_e = _mm512_mul_epu32(a2, a2);    // te4
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a3);
-                prod2_ld = _mm512_cvtepu64_pd(a2);
+                    prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
+                    prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
 
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a3 * a3 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * a2 -> to te4/5
+                    prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
+                    prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
 
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
-
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                    te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
+                    te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
+                }
             }
         }
-        else
-        {
-            // i even, block shape 1.
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
-            a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
-            a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
-
-            //k == 0;
-            //prod1_e = _mm512_mul_epu32(a0, a2);      // te0
-            //prod1_e = _mm512_mul_epu32(a0, a1);      // te2
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a0);
-                prod2_ld = _mm512_cvtepu64_pd(a1);
-                prod3_ld = _mm512_cvtepu64_pd(a2);
-
-                prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a2 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a1 -> to te2/3
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod3_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod2_hd));
-
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
-
-                prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
-            }
-
-            // all terms so far need to be doubled.  
-            // but to do that we first need to remove all bias
-            // that has been accumulated so far.
-            SUB_BIAS_HI(
-                k * 4 + 1,
-                k * 4 + 1,
-                k * 4 + 0,
-                k * 4 + 0);
-            SUB_BIAS_LO(
-                k * 4 + 1,
-                k * 4 + 1,
-                k * 4 + 0,
-                k * 4 + 0);
-
-            // now double
-            te1 = _mm512_slli_epi64(te1, 1);
-            te3 = _mm512_slli_epi64(te3, 1);
-            te5 = _mm512_slli_epi64(te5, 1);
-            te7 = _mm512_slli_epi64(te7, 1);
-            te0 = _mm512_slli_epi64(te0, 1);
-            te2 = _mm512_slli_epi64(te2, 1);
-            te4 = _mm512_slli_epi64(te4, 1);
-            te6 = _mm512_slli_epi64(te6, 1);
-
-            // finally the two non-doubled terms.
-            //prod1_e = _mm512_mul_epu32(a1, a1);    // te0
-            //prod1_e = _mm512_mul_epu32(a0, a0);    // te4
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a1);
-                prod2_ld = _mm512_cvtepu64_pd(a0);
-
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te4/5
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
-
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
-            }
-        }
-
-
-#else				// NBLOCKS is even
-
-        // i odd, block shape 1.
-        if (i & 1)
-        {
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);  // {f, b}
-            a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);  // {e, a}
-            a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);  // {d, 9}
-
-            //k == 0;
-            //prod1_e = _mm512_mul_epu32(a0, a2);   // te0
-            //prod2_e = _mm512_mul_epu32(a0, a1);   // te2
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a0);
-                prod2_ld = _mm512_cvtepu64_pd(a1);
-                prod3_ld = _mm512_cvtepu64_pd(a2);
-
-                prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a2 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * a1 -> to te2/3
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod3_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod2_hd));
-
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
-
-                prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
-            }
-
-            // all terms so far need to be doubled.  
-            // but to do that we first need to remove all bias
-            // that has been accumulated so far.
-            SUB_BIAS_HI(
-                j * 4 + 1,
-                j * 4 + 1,
-                j * 4 + 0,
-                j * 4 + 0);
-            SUB_BIAS_LO(
-                j * 4 + 1,
-                j * 4 + 1,
-                j * 4 + 0,
-                j * 4 + 0);
-
-            // now double
-            te1 = _mm512_slli_epi64(te1, 1);
-            te3 = _mm512_slli_epi64(te3, 1);
-            te5 = _mm512_slli_epi64(te5, 1);
-            te7 = _mm512_slli_epi64(te7, 1);
-            te0 = _mm512_slli_epi64(te0, 1);
-            te2 = _mm512_slli_epi64(te2, 1);
-            te4 = _mm512_slli_epi64(te4, 1);
-            te6 = _mm512_slli_epi64(te6, 1);
-
-            // finally, accumulate the two non-doubled terms.
-            //prod1_e = _mm512_mul_epu32(a1, a1);       // te0
-            //prod2_e = _mm512_mul_epu32(a0, a0);       // te4
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a1);
-                prod2_ld = _mm512_cvtepu64_pd(a0);
-
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a1 * b1 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a0 * b0 -> to te4/5
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
-
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
-            }
-        }
-        else
-        {
-            // i even, block shape 1.
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi64(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);		// {f, b}
-            a1 = _mm512_load_epi64(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);		// {e, a}
-            a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);		// {d, 9}
-            a3 = _mm512_load_epi64(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);		// {c, 8}
-
-            b0 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
-            b1 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
-            b2 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
-            b3 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
-            b4 = _mm512_load_epi64(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
-
-            //prod1_e = _mm512_mul_epu32(a0, b0);    // te0
-            //prod2_e = _mm512_mul_epu32(a0, b1);    // te2
-            //prod3_e = _mm512_mul_epu32(a0, b2);    // te4
-            //prod4_e = _mm512_mul_epu32(a0, b3);    // te6
-            //ACCUM_4X_DOUBLED_PROD;
-            VEC_MUL4_ACCUM(a0, b0, b1, b2, b3);
-
-            //prod1_e = _mm512_mul_epu32(a1, b1);    // te0
-            //prod2_e = _mm512_mul_epu32(a1, b2);    // te2
-            //prod3_e = _mm512_mul_epu32(a1, b3);    // te4
-            //prod4_e = _mm512_mul_epu32(a1, b4);    // te6
-            //ACCUM_4X_DOUBLED_PROD;
-            VEC_MUL4_ACCUM(a1, b1, b2, b3, b4);
-
-            //prod1_e = _mm512_mul_epu32(a2, b2);    // te0
-            //prod2_e = _mm512_mul_epu32(a2, b3);    // te2
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a2);
-                prod2_ld = _mm512_cvtepu64_pd(b2);
-                prod3_ld = _mm512_cvtepu64_pd(b3);
-
-                prod2_hd = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b2 -> to te0/1
-                prod3_hd = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * b3 -> to te2/3
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod2_hd));
-                te3 = _mm512_add_epi64(te3, _mm512_castpd_si512(prod3_hd));
-
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-                prod3_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod3_hd);
-
-                prod2_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod3_ld = _mm512_fmadd_round_pd(prod1_ld, prod3_ld, prod3_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
-                te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
-            }
-
-            // all terms so far need to be doubled.  
-            // but to do that we first need to remove all bias
-            // that has been accumulated so far.
-            SUB_BIAS_HI(
-                j * 4 + 3,
-                j * 4 + 3,
-                j * 4 + 2,
-                j * 4 + 2);
-            SUB_BIAS_LO(
-                j * 4 + 3,
-                j * 4 + 3,
-                j * 4 + 2,
-                j * 4 + 2);
-
-            // now double
-            te1 = _mm512_slli_epi64(te1, 1);
-            te3 = _mm512_slli_epi64(te3, 1);
-            te5 = _mm512_slli_epi64(te5, 1);
-            te7 = _mm512_slli_epi64(te7, 1);
-            te0 = _mm512_slli_epi64(te0, 1);
-            te2 = _mm512_slli_epi64(te2, 1);
-            te4 = _mm512_slli_epi64(te4, 1);
-            te6 = _mm512_slli_epi64(te6, 1);
-
-            // finally, accumulate the two non-doubled terms.
-            //prod1_e = _mm512_mul_epu32(a3, a3);   // te0
-            //prod2_e = _mm512_mul_epu32(a2, a2);   // te4
-            {
-                prod1_ld = _mm512_cvtepu64_pd(a3);
-                prod2_ld = _mm512_cvtepu64_pd(a2);
-
-                prod1_hd = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a3 * a3 -> to te0/1
-                prod2_hd = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, dbias,
-                    (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); // a2 * a2 -> to te4/5
-
-                te1 = _mm512_add_epi64(te1, _mm512_castpd_si512(prod1_hd));
-                te5 = _mm512_add_epi64(te5, _mm512_castpd_si512(prod2_hd));
-
-                prod1_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod1_hd);
-                prod2_hd = _mm512_sub_pd(_mm512_castsi512_pd(vbias2), prod2_hd);
-
-                prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod1_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-                prod2_ld = _mm512_fmadd_round_pd(prod2_ld, prod2_ld, prod2_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
-
-                te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod1_ld));
-                te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod2_ld));
-            }
-        }
-#endif
 
         // the s*n terms.  No more doubling past here.
         for (j = 0; j < NBLOCKS - 1 - i; j++)

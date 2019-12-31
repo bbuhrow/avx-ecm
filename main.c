@@ -133,6 +133,7 @@ int main(int argc, char **argv)
 	int threads;    
 	int pid = getpid();
     uint64_t limit;
+    int size_n;
 
     // primes
     uint32_t seed_p[6542];
@@ -153,9 +154,9 @@ int main(int argc, char **argv)
         printf("commencing parallel ecm on %s\n", argv[1]);
     }
 	
-    printf("ECM has been configured with MAXBITS = %d, NWORDS = %d, "
-        "VECLEN = %d\n", 
-        MAXBITS, NWORDS, VECLEN);
+    //printf("ECM has been configured with MAXBITS = %d, NWORDS = %d, "
+    //    "VECLEN = %d\n", 
+    //    MAXBITS, NWORDS, VECLEN);
 
 	gettimeofday(&startt, NULL);
 
@@ -169,10 +170,37 @@ int main(int argc, char **argv)
     mpz_init(r);
 
     mpz_set_str(gmpn, argv[1], 10);
+    size_n = mpz_sizeinbase(gmpn, 2);
 	numcurves = strtoul(argv[2], NULL, 10);
 	b1 = strtoul(argv[3], NULL, 10);	
 	STAGE1_MAX = b1;
 	STAGE2_MAX = 100ULL * (uint64_t)b1;
+
+    if (DIGITBITS == 52)
+    {
+        MAXBITS = 208;
+        while (MAXBITS <= size_n)
+        {
+            MAXBITS += 208;
+        }
+    }
+    else
+    {
+        MAXBITS = 128;
+        while (MAXBITS <= size_n)
+        {
+            MAXBITS += 128;
+        }
+    }
+
+    NWORDS = MAXBITS / DIGITBITS;
+    NBLOCKS = NWORDS / BLOCKWORDS;
+
+    printf("ECM has been configured with DIGITBITS = %u, VECLEN = %d\n",
+        DIGITBITS, VECLEN);
+
+    printf("Choosing MAXBITS = %u, NWORDS = %d, NBLOCKS = %d based on input size %d\n",
+        MAXBITS, NWORDS, NBLOCKS, size_n);
 
     SOE_VFLAG = 0;
 	threads = SOE_THREADS = 1;

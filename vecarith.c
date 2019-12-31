@@ -215,8 +215,6 @@ __inline void _mm512_mul_eo64_epi32(__m512i a, __m512i b, __m512i *e64, __m512i 
 	carry_e = _mm512_mask_add_epi64(carry_e, scarry_e1, hiword2, carry_e);	\
 	carry_o = _mm512_mask_add_epi64(carry_o, scarry_o1, hiword2, carry_o);
 
-#define BLOCKWORDS 4
-#define NBLOCKS (NWORDS / BLOCKWORDS)
 
 void vecmulmod(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata)
 {
@@ -1612,265 +1610,268 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
         // or if 'i' is even and NBLOCKS is odd.
         // Block shape 2 if 'i' is odd and NBLOCKS is odd or if 'i' is even
         // and NBLOCKS is even.
-#if NBLOCKS & 1		// NBLOCKS is odd
-// i odd, block shape 2.
-        if (i & 1)
+        if (NBLOCKS & 1)		// NBLOCKS is odd
         {
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
-            a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
-            a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
-            a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
+            // i odd, block shape 2.
+            if (i & 1)
+            {
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
+                a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
+                a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
+                a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
 
-            b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
-            b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
-            b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
-            b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
-            b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
+                b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
+                b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
+                b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
+                b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
+                b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
 
-            // save independent sum/carry words for each product-column in the block.
-            // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
-            //k == 0;
-            _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+                // save independent sum/carry words for each product-column in the block.
+                // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
+                //k == 0;
+                _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
 
-            _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+                _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
 
-            _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+                _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
 
-            //k == 1;
-            _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+                //k == 1;
+                _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
 
-            _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+                _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
 
-            _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+                _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
 
-            //k == 2;
-            _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
+                //k == 2;
+                _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
 
-            _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
+                _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
 
-            //k == 3;
-            _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
+                //k == 3;
+                _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
 
-            _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
+                _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
 
-            // all terms so far need to be doubled.  Do that all at once with these
-            // left shifts.
-            te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
-            to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
-            te0 = _mm512_slli_epi64(te0, 1);
-            to0 = _mm512_slli_epi64(to0, 1);
+                // all terms so far need to be doubled.  Do that all at once with these
+                // left shifts.
+                te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
+                to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
+                te0 = _mm512_slli_epi64(te0, 1);
+                to0 = _mm512_slli_epi64(to0, 1);
 
-            te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
-            to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
-            te2 = _mm512_slli_epi64(te2, 1);
-            to2 = _mm512_slli_epi64(to2, 1);
+                te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
+                to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
+                te2 = _mm512_slli_epi64(te2, 1);
+                to2 = _mm512_slli_epi64(to2, 1);
 
-            te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
-            to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
-            te4 = _mm512_slli_epi64(te4, 1);
-            to4 = _mm512_slli_epi64(to4, 1);
+                te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
+                to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
+                te4 = _mm512_slli_epi64(te4, 1);
+                to4 = _mm512_slli_epi64(to4, 1);
 
-            te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
-            to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
-            te6 = _mm512_slli_epi64(te6, 1);
-            to6 = _mm512_slli_epi64(to6, 1);
+                te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
+                to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
+                te6 = _mm512_slli_epi64(te6, 1);
+                to6 = _mm512_slli_epi64(to6, 1);
 
-            // finally the two non-doubled terms.
-            _mm512_mul_eo64_epi32(a3, a3, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te0, to0, te1, to1);
+                // finally the two non-doubled terms.
+                _mm512_mul_eo64_epi32(a3, a3, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te0, to0, te1, to1);
 
-            _mm512_mul_eo64_epi32(a2, a2, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te4, to4, te5, to5);
+                _mm512_mul_eo64_epi32(a2, a2, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te4, to4, te5, to5);
+            }
+            else
+            {
+                // i even, block shape 1.
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
+                a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
+                a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
+
+                //k == 0;
+                _mm512_mul_eo64_epi32(a0, a2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+
+                //k == 1;
+                _mm512_mul_eo64_epi32(a0, a1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+
+                te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
+                to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
+                te0 = _mm512_slli_epi64(te0, 1);
+                to0 = _mm512_slli_epi64(to0, 1);
+
+                te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
+                to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
+                te2 = _mm512_slli_epi64(te2, 1);
+                to2 = _mm512_slli_epi64(to2, 1);
+
+                // technically only have to do these two if j > 0 (so that
+                // they are non-zero from full-block loop iterations).
+                te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
+                to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
+                te4 = _mm512_slli_epi64(te4, 1);
+                to4 = _mm512_slli_epi64(to4, 1);
+
+                te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
+                to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
+                te6 = _mm512_slli_epi64(te6, 1);
+                to6 = _mm512_slli_epi64(to6, 1);
+
+                // finally the two non-doubled terms.
+                _mm512_mul_eo64_epi32(a1, a1, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te0, to0, te1, to1);
+
+                _mm512_mul_eo64_epi32(a0, a0, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te4, to4, te5, to5);
+            }
         }
+
         else
         {
-            // i even, block shape 1.
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);
-            a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);
-            a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
+            // NBLOCKS is even
+            // i odd, block shape 1.
+            if (i & 1)
+            {
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);  // {f, b}
+                a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);  // {e, a}
+                a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);  // {d, 9}
 
-            //k == 0;
-            _mm512_mul_eo64_epi32(a0, a2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+                //k == 0;
+                _mm512_mul_eo64_epi32(a0, a2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
 
-            //k == 1;
-            _mm512_mul_eo64_epi32(a0, a1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+                //k == 1;
+                _mm512_mul_eo64_epi32(a0, a1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
 
-            te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
-            to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
-            te0 = _mm512_slli_epi64(te0, 1);
-            to0 = _mm512_slli_epi64(to0, 1);
+                te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
+                to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
+                te0 = _mm512_slli_epi64(te0, 1);
+                to0 = _mm512_slli_epi64(to0, 1);
 
-            te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
-            to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
-            te2 = _mm512_slli_epi64(te2, 1);
-            to2 = _mm512_slli_epi64(to2, 1);
+                te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
+                to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
+                te2 = _mm512_slli_epi64(te2, 1);
+                to2 = _mm512_slli_epi64(to2, 1);
 
-            // technically only have to do these two if j > 0 (so that
-            // they are non-zero from full-block loop iterations).
-            te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
-            to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
-            te4 = _mm512_slli_epi64(te4, 1);
-            to4 = _mm512_slli_epi64(to4, 1);
+                // technically only have to do these two if j > 0 (so that
+                // they are non-zero from full-block loop iterations).
+                te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
+                to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
+                te4 = _mm512_slli_epi64(te4, 1);
+                to4 = _mm512_slli_epi64(to4, 1);
 
-            te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
-            to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
-            te6 = _mm512_slli_epi64(te6, 1);
-            to6 = _mm512_slli_epi64(to6, 1);
+                te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
+                to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
+                te6 = _mm512_slli_epi64(te6, 1);
+                to6 = _mm512_slli_epi64(to6, 1);
 
-            // finally the two non-doubled terms.
-            _mm512_mul_eo64_epi32(a1, a1, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te0, to0, te1, to1);
+                // finally the two non-doubled terms.
+                _mm512_mul_eo64_epi32(a1, a1, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te0, to0, te1, to1);
 
-            _mm512_mul_eo64_epi32(a0, a0, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te4, to4, te5, to5);
+                _mm512_mul_eo64_epi32(a0, a0, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te4, to4, te5, to5);
+            }
+            else
+            {
+                // i even, block shape 1.
+                // always a continuation of the full-block loop, so use the same 
+                // loading pattern.  Only now we don't need as many b-terms.
+                a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);		// {f, b}
+                a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);		// {e, a}
+                a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);		// {d, 9}
+                a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);		// {c, 8}
+
+                b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
+                b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
+                b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
+                b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
+                b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
+
+                // save independent sum/carry words for each product-column in the block.
+                // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
+                //k == 0;
+                _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+
+                _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+
+                _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
+
+                //k == 1;
+                _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+
+                _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+
+                _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
+
+                //k == 2;
+                _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
+
+                _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
+
+                //k == 3;
+                _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
+
+                _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
+                ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
+
+                // all terms so far need to be doubled.  Do that all at once with these
+                // left shifts.
+                te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
+                to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
+                te0 = _mm512_slli_epi64(te0, 1);
+                to0 = _mm512_slli_epi64(to0, 1);
+
+                te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
+                to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
+                te2 = _mm512_slli_epi64(te2, 1);
+                to2 = _mm512_slli_epi64(to2, 1);
+
+                te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
+                to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
+                te4 = _mm512_slli_epi64(te4, 1);
+                to4 = _mm512_slli_epi64(to4, 1);
+
+                te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
+                to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
+                te6 = _mm512_slli_epi64(te6, 1);
+                to6 = _mm512_slli_epi64(to6, 1);
+
+                // finally the two non-doubled terms.
+                _mm512_mul_eo64_epi32(a3, a3, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te0, to0, te1, to1);
+
+                _mm512_mul_eo64_epi32(a2, a2, &prod1_e, &prod1_o);
+                ACCUM_EO_PROD(te4, to4, te5, to5);
+            }
         }
-
-
-#else				// NBLOCKS is even
-// i odd, block shape 1.
-        if (i & 1)
-        {
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);  // {f, b}
-            a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);  // {e, a}
-            a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);  // {d, 9}
-
-            //k == 0;
-            _mm512_mul_eo64_epi32(a0, a2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
-
-            //k == 1;
-            _mm512_mul_eo64_epi32(a0, a1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
-
-            te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
-            to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
-            te0 = _mm512_slli_epi64(te0, 1);
-            to0 = _mm512_slli_epi64(to0, 1);
-
-            te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
-            to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
-            te2 = _mm512_slli_epi64(te2, 1);
-            to2 = _mm512_slli_epi64(to2, 1);
-
-            // technically only have to do these two if j > 0 (so that
-            // they are non-zero from full-block loop iterations).
-            te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
-            to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
-            te4 = _mm512_slli_epi64(te4, 1);
-            to4 = _mm512_slli_epi64(to4, 1);
-
-            te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
-            to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
-            te6 = _mm512_slli_epi64(te6, 1);
-            to6 = _mm512_slli_epi64(to6, 1);
-
-            // finally the two non-doubled terms.
-            _mm512_mul_eo64_epi32(a1, a1, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te0, to0, te1, to1);
-
-            _mm512_mul_eo64_epi32(a0, a0, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te4, to4, te5, to5);
-        }
-        else
-        {
-            // i even, block shape 1.
-            // always a continuation of the full-block loop, so use the same 
-            // loading pattern.  Only now we don't need as many b-terms.
-            a0 = _mm512_load_epi32(a->data + (NWORDS - 1 - j * BLOCKWORDS) * VECLEN);		// {f, b}
-            a1 = _mm512_load_epi32(a->data + (NWORDS - 2 - j * BLOCKWORDS) * VECLEN);		// {e, a}
-            a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);		// {d, 9}
-            a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);		// {c, 8}
-
-            b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
-            b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
-            b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
-            b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
-            b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
-
-            // save independent sum/carry words for each product-column in the block.
-            // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
-            //k == 0;
-            _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
-
-            _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
-
-            _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te0, to0, te1, to1);
-
-            //k == 1;
-            _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
-
-            _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
-
-            _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te2, to2, te3, to3);
-
-            //k == 2;
-            _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
-
-            _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te4, to4, te5, to5);
-
-            //k == 3;
-            _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
-
-            _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
-            ACCUM_DOUBLED_EO_PROD(te6, to6, te7, to7);
-
-            // all terms so far need to be doubled.  Do that all at once with these
-            // left shifts.
-            te1 = _mm512_or_epi64(te1, _mm512_maskz_srli_epi32(0xaaaa, te0, 31));
-            to1 = _mm512_or_epi64(to1, _mm512_maskz_srli_epi32(0xaaaa, to0, 31));
-            te0 = _mm512_slli_epi64(te0, 1);
-            to0 = _mm512_slli_epi64(to0, 1);
-
-            te3 = _mm512_or_epi64(te3, _mm512_maskz_srli_epi32(0xaaaa, te2, 31));
-            to3 = _mm512_or_epi64(to3, _mm512_maskz_srli_epi32(0xaaaa, to2, 31));
-            te2 = _mm512_slli_epi64(te2, 1);
-            to2 = _mm512_slli_epi64(to2, 1);
-
-            te5 = _mm512_or_epi64(te5, _mm512_maskz_srli_epi32(0xaaaa, te4, 31));
-            to5 = _mm512_or_epi64(to5, _mm512_maskz_srli_epi32(0xaaaa, to4, 31));
-            te4 = _mm512_slli_epi64(te4, 1);
-            to4 = _mm512_slli_epi64(to4, 1);
-
-            te7 = _mm512_or_epi64(te7, _mm512_maskz_srli_epi32(0xaaaa, te6, 31));
-            to7 = _mm512_or_epi64(to7, _mm512_maskz_srli_epi32(0xaaaa, to6, 31));
-            te6 = _mm512_slli_epi64(te6, 1);
-            to6 = _mm512_slli_epi64(to6, 1);
-
-            // finally the two non-doubled terms.
-            _mm512_mul_eo64_epi32(a3, a3, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te0, to0, te1, to1);
-
-            _mm512_mul_eo64_epi32(a2, a2, &prod1_e, &prod1_o);
-            ACCUM_EO_PROD(te4, to4, te5, to5);
-        }
-#endif
 
         // the s*n term.  No more doubling past here.
         for (j = 0; j < NBLOCKS - 1 - i; j++)

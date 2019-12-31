@@ -52,15 +52,15 @@ either expressed or implied, of the FreeBSD Project.
 
 #define DEFINED 1
 #define MAX_WINSIZE 8
-
+#define BLOCKWORDS 4
 #define INLINE __inline
 #define strto_uint64_t strtoull
 #define DEC 10
 #define HEX 16
 
-#ifndef MAXBITS
-#define MAXBITS 1040
-#endif
+//#ifndef MAXBITS
+//#define MAXBITS 1040
+//#endif
 
 #ifndef DIGITBITS
 #define DIGITBITS 52
@@ -89,14 +89,18 @@ either expressed or implied, of the FreeBSD Project.
 
 #endif
 
-#define NWORDS (MAXBITS / DIGITBITS)
+//#define NWORDS (MAXBITS / DIGITBITS)
 #define PRId64 "ld"
 #define PRIu64 "lu"
 #define PRIx64 "lx"
 
-#if (MAXBITS % DIGITBITS) != 0
-#error "MAXBITS must be divisble by DIGITBITS"
-#endif
+//#if (MAXBITS % DIGITBITS) != 0
+//#error "MAXBITS must be divisble by DIGITBITS"
+//#endif
+
+uint32_t MAXBITS;
+uint32_t NWORDS;
+uint32_t NBLOCKS;
 
 
 typedef struct

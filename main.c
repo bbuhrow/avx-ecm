@@ -48,6 +48,10 @@ void thread_init(thread_data_t *tdata, monty *mdata);
 
 static int debugctr = 0;
 
+#ifdef WIN64
+//#define mpz_get_ui(x) ( (((x)->_mp_d[1]) << 32) | ((x)->_mp_d[0]) )
+
+#endif
 
 void extract_bignum_from_vec_to_mpz(mpz_t dest, bignum *vec_src, int num, int sz)
 {
@@ -61,8 +65,17 @@ void extract_bignum_from_vec_to_mpz(mpz_t dest, bignum *vec_src, int num, int sz
     mpz_set_ui(dest, 0);
     for (j = sz - 1; j >= 0; j--)
     {
+        
+#if defined(WIN64) && (DIGITBITS == 52)
+        mpz_mul_2exp(dest, dest, 20);
+        mpz_add_ui(dest, dest, vec_src->data[num + j * VECLEN] >> 32);
+        mpz_mul_2exp(dest, dest, 32);
+        mpz_add_ui(dest, dest, (vec_src->data[num + j * VECLEN]) & 0xffffffff);
+#else
         mpz_mul_2exp(dest, dest, DIGITBITS);
         mpz_add_ui(dest, dest, vec_src->data[num + j * VECLEN]);
+#endif
+        //gmp_printf("word is %016llx, dest is now %Zx\n", vec_src->data[num + j * VECLEN], dest);
     }
 
     return;
@@ -196,8 +209,8 @@ int main(int argc, char **argv)
     NWORDS = MAXBITS / DIGITBITS;
     NBLOCKS = NWORDS / BLOCKWORDS;
 
-    printf("ECM has been configured with DIGITBITS = %u, VECLEN = %d\n",
-        DIGITBITS, VECLEN);
+    printf("ECM has been configured with DIGITBITS = %u, VECLEN = %d, GMP_LIMB_BITS = %d\n",
+        DIGITBITS, VECLEN, GMP_LIMB_BITS);
 
     printf("Choosing MAXBITS = %u, NWORDS = %d, NBLOCKS = %d based on input size %d\n",
         MAXBITS, NWORDS, NBLOCKS, size_n);
@@ -269,11 +282,11 @@ int main(int argc, char **argv)
     broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
     mpz_tdiv_r(r, r, gmpn);
     broadcast_mpz_to_vec(montyconst->one, r);
-    //gmp_printf("n = %Zd\n", gmpn);
-    //gmp_printf("rhat = %Zd\n", montyconst->rhat);
-    //gmp_printf("nhat = %Zd\n", montyconst->nhat);
-    //gmp_printf("one = %Zd\n", r);
-    //gmp_printf("rho = %lu\n", mpz_get_ui(montyconst->nhat) & MAXDIGIT);
+    //gmp_printf("n = %Zx\n", gmpn);
+    //gmp_printf("rhat = %Zx\n", montyconst->rhat);
+    //gmp_printf("nhat = %Zx\n", montyconst->nhat);
+    //gmp_printf("one = %Zx\n", r);
+    //printf("rho = %016llx\n", mpz_get_ui(montyconst->nhat) & MAXDIGIT);
     for (i = 0; i < VECLEN; i++)
     {
         montyconst->vrho[i] = mpz_get_ui(montyconst->nhat) & MAXDIGIT;

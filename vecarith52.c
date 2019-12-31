@@ -2220,7 +2220,7 @@ void print_vechex(base_t *a, int v, int n, const char *pre)
         printf("%s: ", pre);
     for (i = n - 1; i >= 0; i--)
     {
-        printf("%013lx", a[v + i * VECLEN]);
+        printf("%013"PRIx64"", a[v + i * VECLEN]);
     }
     printf("\n");
     return;
@@ -2231,12 +2231,12 @@ void print_regvechex(__m512i a, int v, const char *pre)
     // print n hexdigits of the v'th position of vec bignum a
     base_t aa[VECLEN];
 
-    _mm512_store_epi32(aa, a);
+    _mm512_store_epi64(aa, a);
 
     if (pre != NULL)
         printf("%s: ", pre);
 
-    printf("%08x", aa[v]);
+    printf("%08"PRIx64"", aa[v]);
     if (pre != NULL)
         printf("\n");
     return;
@@ -2248,13 +2248,13 @@ void print_regvechexrange(__m512i a, int v1, int v2, const char *pre)
     base_t aa[VECLEN];
     int i;
 
-    _mm512_store_epi32(aa, a);
+    _mm512_store_epi64(aa, a);
 
     if (pre != NULL)
         printf("%s: ", pre);
 
     for (i = v2; i >= v1; i--)
-        printf("%08x", aa[i]);
+        printf("%08"PRIx64"", aa[i]);
 
     if (pre != NULL)
         printf("\n");
@@ -2271,7 +2271,7 @@ void print_hexbignum(bignum *a, const char *pre)
 
     for (i = NWORDS - 1; i >= 0; i--)
     {
-        printf("%013lx", a->data[i]);
+        printf("%013"PRIx64"", a->data[i]);
     }
     printf("\n");
     return;
@@ -2289,7 +2289,7 @@ void print_vechexbignum(bignum *a, const char *pre)
     {
         for (i = NWORDS - 1; i >= 0; i--)
         {
-            printf("%016lx", a->data[i * VECLEN + j]);
+            printf("%016llx", a->data[i * VECLEN + j]);
         }
         printf("\n");
     }
@@ -2306,7 +2306,7 @@ void print_regvechex64(__m512i a, int v, const char *pre)
     if (pre != NULL)
         printf("%s: ", pre);
 
-    printf("%016lx", aa[v]);
+    printf("%016"PRIx64"", aa[v]);
     if (pre != NULL)
         printf("\n");
     return;
@@ -2345,7 +2345,7 @@ uint32_t vec_eq52(base_t * u, base_t * v, int sz)
     // the corresponding bignum in vec 'v'.
     // return a mask of results.
     int i;
-    __mmask16 meq = 0xffff;
+    __mmask8 meq = 0xff;
 
     for (i = sz - 1; i >= 0; --i)
     {

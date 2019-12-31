@@ -67,6 +67,7 @@ either expressed or implied, of the FreeBSD Project.
 #endif
 
 #if DIGITBITS==52
+
 #define base_t uint64_t
 #define base_signed_t int64_t
 
@@ -77,6 +78,7 @@ either expressed or implied, of the FreeBSD Project.
 #define VECLEN 8
 
 #elif DIGITBITS==32
+
 #define base_t uint32_t
 #define base_signed_t int32_t
 
@@ -85,23 +87,26 @@ either expressed or implied, of the FreeBSD Project.
 #define MAXDIGIT 0xffffffff
 #define HIBITMASK 0x80000000
 #define VECLEN 16
-#else
 
+#else
+#error "DIGITBITS must be either 52 or 32"
 #endif
 
-//#define NWORDS (MAXBITS / DIGITBITS)
+#ifdef WIN64
+#define PRId64 "lld"
+#define PRIu64 "llu"
+#define PRIx64 "llx"
+#define mpz_get_ui(x) ( ((x)->_mp_d[0]) )
+#define mpz_set_ui(x, y) ( ((x)->_mp_d[0]) = (y) , (x)->_mp_size = 1 )
+#else
 #define PRId64 "ld"
 #define PRIu64 "lu"
 #define PRIx64 "lx"
-
-//#if (MAXBITS % DIGITBITS) != 0
-//#error "MAXBITS must be divisble by DIGITBITS"
-//#endif
+#endif
 
 uint32_t MAXBITS;
 uint32_t NWORDS;
 uint32_t NBLOCKS;
-
 
 typedef struct
 {
@@ -207,7 +212,7 @@ typedef struct
 	ecm_pt pt3;
 	ecm_pt pt4;
 	ecm_pt pt5;
-	base_t sigma;
+	uint64_t sigma;
 
 	uint8_t *marks;
 	uint8_t *nmarks;

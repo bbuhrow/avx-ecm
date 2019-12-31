@@ -27,6 +27,28 @@ of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 */
 
+/* Elliptic Curve Method: toplevel and stage 1 routines.
+
+Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
+2012, 2016 Paul Zimmermann, Alexander Kruppa, Cyril Bouvier, David Cleaver.
+
+This file is part of the ECM Library.
+
+The ECM Library is free software; you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation; either version 3 of the License, or (at your
+option) any later version.
+
+The ECM Library is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with the ECM Library; see the file COPYING.LIB.  If not, see
+http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
+51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA. */
+
 #include "avx_ecm.h"
 #include "omp.h"
 #include "eratosthenes/soe.h"
@@ -45,7 +67,7 @@ void next_pt_vec(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c);
 void euclid(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c);
 void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c);
 int check_factor(mpz_t Z, mpz_t n, mpz_t f);
-void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t sigma);
+void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t sigma);
 void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *primes, int verbose);
 void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
 void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
@@ -893,24 +915,57 @@ void ecm_build_curve_work_fcn(void *vptr)
     tpool_t *tpdata = (tpool_t *)vptr;
     thread_data_t *tdata = (thread_data_t *)tpdata->user_data;
     uint32_t tid = tpdata->tindex;
-    mpz_t X, Z, A;
+    mpz_t X, Z, A; // , t, n, one, r;
 
     int i;
 
     mpz_init(X);
     mpz_init(Z);
     mpz_init(A);
+    //mpz_init(t);
+    //mpz_init(n);
+    //mpz_init(one);
+    //mpz_init(r);
+    //
+    //extract_bignum_from_vec_to_mpz(n, tdata[tid].work->n, 0, NWORDS);
+    //extract_bignum_from_vec_to_mpz(one, tdata[tid].mdata->one, 0, NWORDS);
+    //mpz_set_ui(r, 1);
+    //mpz_mul_2exp(r, r, MAXBITS);
 
 	for (i = 0; i < VECLEN; i++)
     {
         int j;
         build_one_curve(&tdata[tid], X, Z, A, 0);
 
+        //if (1)
+        //{
+        //    mpz_add_ui(A, A, 2);
+        //    if (mpz_cmp(A, n) > 0)
+        //    {
+        //        mpz_sub(A, A, n);
+        //    }
+        //    mpz_set_ui(t, 4);
+        //    mpz_invert(t, t, n);
+        //    mpz_mul(A, A, t);
+        //    mpz_tdiv_r(A, A, n);
+        //    mpz_mul(A, A, r);
+        //    mpz_tdiv_r(A, A, n);
+        //    mpz_set(Z, one);
+        //}
+
         insert_mpz_to_vec(tdata[tid].P->X, X, i);
         insert_mpz_to_vec(tdata[tid].P->Z, Z, i);
         insert_mpz_to_vec(tdata[tid].work->s, A, i);
         tdata[tid].sigma[i] = tdata[tid].work->sigma;
     }
+
+    //gmp_printf("POINT x[%d]: %Zx\n", VECLEN - 1, X);
+    //gmp_printf("POINT z[%d]: %Zx\n", VECLEN - 1, Z);
+    //gmp_printf("POINT a[%d]: %Zx\n", VECLEN - 1, A);
+    //
+    //print_vechexbignum(tdata[tid].P->X, "POINT x: ");
+    //print_vechexbignum(tdata[tid].P->Z, "POINT z: ");
+    //print_vechexbignum(tdata[tid].work->s, "POINT a: ");
 
     tdata[tid].work->diff1->size = tdata[tid].work->n->size;
     tdata[tid].work->diff2->size = tdata[tid].work->n->size;
@@ -928,6 +983,10 @@ void ecm_build_curve_work_fcn(void *vptr)
     mpz_clear(X);
     mpz_clear(Z);
     mpz_clear(A);
+    //mpz_clear(t);
+    //mpz_clear(n);
+    //mpz_clear(one);
+    //mpz_clear(r);
 
     return;
 }
@@ -951,15 +1010,7 @@ void ecm_work_init(ecm_work *work)
 	work->tt2 = vecInit();
 	work->tt3 = vecInit();
 	work->tt4 = vecInit();
-    //work->tt4 = (bignum *)malloc(sizeof(bignum));
 	work->tt5 = vecInit();
-
-    //work->tt4->data = (base_t *)xmalloc_align(sz * sizeof(base_t));
-    //for (j = 0; j < sz; j++)
-    //{
-    //    work->tt4->data[j] = 0;
-    //}
-    //work->tt4->size = 1;
 	work->s = vecInit();
 	work->n = vecInit();
 
@@ -1181,14 +1232,14 @@ void vec_add(monty *mdata, ecm_work *work, ecm_pt *Pin, ecm_pt *Pout)
 
 void vec_duplicate(monty *mdata, ecm_work *work, bignum *insum, bignum *indiff, ecm_pt *P)
 {
-    vecsqrmod_ptr(indiff, work->tt1, work->n, work->tt4, mdata);				// U=(x1 - z1)^2
-    vecsqrmod_ptr(insum, work->tt2, work->n, work->tt4, mdata);			    // V=(x1 + z1)^2
-    vecmulmod_ptr(work->tt1, work->tt2, P->X, work->n, work->tt4, mdata);      // x=U*V
+    vecsqrmod_ptr(indiff, work->tt1, work->n, work->tt4, mdata);			    // V=(x1 - z1)^2
+    vecsqrmod_ptr(insum, work->tt2, work->n, work->tt4, mdata);			        // U=(x1 + z1)^2
+    vecmulmod_ptr(work->tt1, work->tt2, P->X, work->n, work->tt4, mdata);       // x=U*V
 
-    vecsubmod_ptr(work->tt2, work->tt1, work->tt3, work->n);	                    // w = V-U
-    vecmulmod_ptr(work->tt3, work->s, work->tt2, work->n, work->tt4, mdata);   // w = (A+2)/4 * w
-    vecaddmod_ptr(work->tt2, work->tt1, work->tt2, work->n);                       // w = w + U
-    vecmulmod_ptr(work->tt2, work->tt3, P->Z, work->n, work->tt4, mdata);      // Z = w*(V-U)
+    vecsubmod_ptr(work->tt2, work->tt1, work->tt3, work->n);	                // w = U-V
+    vecmulmod_ptr(work->tt3, work->s, work->tt2, work->n, work->tt4, mdata);    // t = (A+2)/4 * w
+    vecaddmod_ptr(work->tt2, work->tt1, work->tt2, work->n);                    // t = t + V
+    vecmulmod_ptr(work->tt2, work->tt3, P->Z, work->n, work->tt4, mdata);       // Z = t*w
 	work->stg1Doub++;
     return;
 }
@@ -2310,28 +2361,31 @@ void vececm(thread_data_t *tdata)
                 {
 					FILE *out = fopen("ecm_results.txt", "a");
 
-                    gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = %lu\n",
-                        tdata[j].factor, j, i, tdata[j].sigma[i]);
+                    gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
+                        tdata[j].factor, j, i);
+                    printf("%"PRIu64"\n", tdata[j].sigma[i]);
 					
 					if (out != NULL)
 					{
 						gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-							"in thread %d, vec position %d, with sigma = %lu\n",
-                            tdata[j].factor, threads * curve + j * VECLEN + i, j, i, tdata[j].sigma[i]);
+							"in thread %d, vec position %d, with sigma = ",
+                            tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+                        fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
 						fclose(out);
 					}
                     fflush(stdout);
                     found = 1;
                 }
 
-                gmp_fprintf(save, "METHOD=ECM; SIGMA=%lu; B1=%lu; N=%Zd; ", 
-                    tdata[j].sigma[i], STAGE1_MAX, gmpn);
+                fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
+                    tdata[j].sigma[i], STAGE1_MAX);
+                gmp_fprintf(save, "N=0x%Zx; ", gmpn);
 
 				extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
-                gmp_fprintf(save, "X=%Zd; ", gmpt);
+                gmp_fprintf(save, "X=0x%Zx; ", gmpt);
 
 				extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
-				gmp_fprintf(save, "Z=%Zd; PROGRAM=AVX-ECM;\n", gmpt);
+				gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
             }
         }
 
@@ -2421,14 +2475,16 @@ void vececm(thread_data_t *tdata)
                     {
 						FILE *out = fopen("ecm_results.txt", "a");
 
-                        gmp_printf("\nfound factor %Zd in stage 2 in thread %d, vec position %d, with sigma = %lu\n",
-                            tdata[j].factor, j, i, tdata[j].sigma[i]);
+                        gmp_printf("\nfound factor %Zd in stage 2 in thread %d, vec position %d, with sigma = ",
+                            tdata[j].factor, j, i);
+                        printf("%"PRIu64"\n", tdata[j].sigma[i]);
 
 						if (out != NULL)
 						{
 							gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-								"in thread %d, vec position %d, with sigma = %lu\n",
-                                tdata[j].factor, threads * curve + j * VECLEN + i, j, i, tdata[j].sigma[i]);
+								"in thread %d, vec position %d, with sigma = ",
+                                tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+                            fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
 							fclose(out);
 						}
 
@@ -2456,12 +2512,12 @@ void vececm(thread_data_t *tdata)
 
 //#define PRINT_DEBUG
 
-void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t sigma)
+void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t sigma)
 {
     monty *mdata = tdata->mdata;
     ecm_work *work = tdata->work;
     uint32_t tid = tdata->tid;
-	ecm_pt *P = &work->pt1;
+    ecm_pt *P = &work->pt1;
 
     mpz_t n, u, v, t1, t2, t3, t4;
     mpz_init(n);
@@ -2474,34 +2530,34 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t s
 
     extract_bignum_from_vec_to_mpz(n, mdata->n, 0, NWORDS);
 
-	if (sigma == 0)
-	{
-		do
-		{
-			work->sigma = lcg_rand(&tdata->lcg_state);
-		} while (work->sigma < 6);
-	}
-	else
-	{
-		work->sigma = sigma;
-	}
+    if (sigma == 0)
+    {
+        do
+        {
+            work->sigma = lcg_rand(&tdata->lcg_state);
+        } while (work->sigma < 6);
+    }
+    else
+    {
+        work->sigma = sigma;
+    }
 
-	//sigma = 1632562926;
-	//sigma = 269820583;
-	//sigma = 50873471;
-	//sigma = 444711979;		// both good
-	//work->sigma = sigma;
-    // printf("thread %d running curve on sigma = %lu\n", tid, work->sigma);
+    //sigma = 1632562926;
+    //sigma = 269820583;
+    //sigma = 50873471;
+    //sigma = 444711979;		// both good
+    //work->sigma = sigma;
+    printf("thread %d running curve on sigma = %"PRIu64"\n", tid, work->sigma);
 
 #ifdef PRINT_DEBUG
     printf("sigma = %lu\n", work->sigma);
 #endif
 
-	// v = 4*sigma
+    // v = 4*sigma
     mpz_set_ui(v, 4ULL * work->sigma);
 
 #ifdef PRINT_DEBUG
-	gmp_printf("v = %Zx\n", v);
+    gmp_printf("v = %Zx\n", v);
 #endif
 
     // u = sigma^2 - 5
@@ -2510,7 +2566,7 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t s
     mpz_sub_ui(u, u, 5);
 
 #ifdef PRINT_DEBUG
-	gmp_printf("u = sigma^2 - 5 = %Zx\n", u);
+    gmp_printf("u = sigma^2 - 5 = %Zx\n", u);
 #endif
 
     // x = u^3
@@ -2530,9 +2586,9 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t s
 #ifdef PRINT_DEBUG
     gmp_printf("v^3 = %Zx\n", Z);
 #endif
-	
 
-	// compute parameter A
+
+    // compute parameter A
     // (v-u)
     if (mpz_cmp(u, v) > 0)
     {
@@ -2565,96 +2621,87 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint32_t s
     gmp_printf("a = %Zx\n", t1);
 #endif
 
-#if 0
-	sp2big(16, t2);
-	to_monty(mdata, t2);
-	monty_mul(mdata, P->X, t2, t3);	//16*u^3
-	monty_mul(mdata, t3, v, t4);	//16*u^3*v
+    if (0)
+    {
+        // 4*x*v
+        mpz_mul_ui(t2, X, 4);
+        mpz_mul(t4, t2, v);
+        mpz_tdiv_r(t4, t4, n);
+
+        // 4*x*v * z
+        mpz_mul(t3, t4, Z);
+        mpz_tdiv_r(t3, t3, n);
+
+        /* u = 1 / (v^3 * 4*u^3*v) */
+        mpz_invert(t2, t3, n);
+
+        /* v = z^(-1) (mod n)  = 1 / v^3   */
+        mpz_mul(v, t2, t4);   
+        mpz_tdiv_r(v, v, n);
+
+        /* x = x * z^(-1)      = u^3 / v^3 */
+        mpz_mul(X, X, v);
+        mpz_tdiv_r(X, X, n);
+
+        /* v = b^(-1) (mod n)  = 1 / 4*u^3*v */
+        mpz_mul(v, t2, Z);
+        mpz_tdiv_r(v, v, n);
+
+        /* t = ((v-u)^3 * (3*u+v)) / 4*u^3*v */
+        mpz_mul(t1, t1, v);       
+        mpz_tdiv_r(t1, t1, n);
+
+        /* A = ((v-u)^3 * (3*u+v)) / 4*u^3*v - 2*/
+        mpz_sub_ui(A, t1, 2);
+        if (mpz_sgn(A) < 0)
+        {
+            mpz_add(A, A, n);
+        }
+
+        mpz_mul_2exp(X, X, DIGITBITS * NWORDS);
+        mpz_tdiv_r(X, X, n);
+        mpz_mul_2exp(Z, Z, DIGITBITS * NWORDS);
+        mpz_tdiv_r(Z, Z, n);
+        //mpz_mul(A, A, t1);
+        //mpz_tdiv_r(A, A, n);
+    }
+    else
+    {
+        // 16*u^3*v
+        mpz_mul_ui(t2, X, 16);
+        mpz_mul(t4, t2, v);
+        mpz_tdiv_r(t4, t4, n);
 
 #ifdef PRINT_DEBUG
-	printf("16*u^3*v = %s\n", z2decstr(t4));
+        gmp_printf("16*u^3*v = %Zx\n", t4);
 #endif
 
-	//u holds the denom, t1 holds the numer
-	//accomplish the division by multiplying by the modular inverse
-	//of the denom, which we find using the gcd on the non-monty
-	//representation of the denom and n
-	t4->size = NWORDS;
-	zClamp(t4);
-	zREDC(mdata, t4);
-
-#ifdef PRINT_DEBUG
-	printf("redc = %s\n", z2decstr(t4));
-#endif
-
-	xGCD(t4, n, t2, t3, t5);	//inverse is in &t2
-
-#ifdef PRINT_DEBUG
-	printf("inv = %s\n", z2decstr(t2));
-#endif
-
-	//gcd should be 1
-	if (zCompare(t5, zOne) != 0)
-		printf("gcd not one\n");
-
-	//verify inverse
-	zModMul(t4, t2, n, t3);
-	if (zCompare(t3, zOne) != 0)
-		printf("inverse incorrect: inv = %s \n", z2decstr(t3));
-
-	//compute division via multiplication by inverse
-	t1->size = NWORDS;
-	zClamp(t1);
-	zREDC(mdata, t1);
-	zMul(t1, t2, t3);
-	zDiv(t3, n, t4, t1);
-
-	to_monty(mdata, t1);
-#ifdef PRINT_DEBUG
-	printf("b = %s\n", z2decstr(t1));
-	exit(1);
-#endif
-	// t1 = b = (v - u)^3 * (3*u + v) / 16u^3v)
-
-#else
-
-    // 16*u^3*v
-    mpz_mul_ui(t2, X, 16);
-    mpz_mul(t4, t2, v);
-    mpz_tdiv_r(t4, t4, n);
-
-#ifdef PRINT_DEBUG
-    gmp_printf("16*u^3*v = %Zx\n", t4);
-#endif
-
-	// accomplish the division by multiplying by the modular inverse
-	// of the denom
-    mpz_invert(t2, t4, n);
+        // accomplish the division by multiplying by the modular inverse
+        // of the denom
+        mpz_invert(t2, t4, n);
 
 
 #ifdef PRINT_DEBUG
-    gmp_printf("inv = %Zx\n", t2);
+        gmp_printf("inv = %Zx\n", t2);
 #endif
 
-	// t1 = b = (v - u)^3 * (3*u + v) / 16u^3v)
-    mpz_mul(A, t1, t2);
-    mpz_tdiv_r(A, A, n);
+        // t1 = b = (v - u)^3 * (3*u + v) / 16u^3v)
+        mpz_mul(A, t1, t2);
+        mpz_tdiv_r(A, A, n);
 
 #ifdef PRINT_DEBUG
-    gmp_printf("b = %Zx\n", A);
+        gmp_printf("b = %Zx\n", A);
 #endif
 
-    mpz_set_ui(t1, 1);
-    mpz_mul_2exp(t1, t1, DIGITBITS * NWORDS);
+        mpz_mul_2exp(X, X, DIGITBITS * NWORDS);
+        mpz_tdiv_r(X, X, n);
+        mpz_mul_2exp(Z, Z, DIGITBITS * NWORDS);
+        mpz_tdiv_r(Z, Z, n);
+        mpz_mul_2exp(A, A, DIGITBITS * NWORDS);
+        mpz_tdiv_r(A, A, n);
+    }
+
     
-    mpz_mul(X, X, t1);
-    mpz_tdiv_r(X, X, n);
-    mpz_mul(Z, Z, t1);
-    mpz_tdiv_r(Z, Z, n);
-    mpz_mul(A, A, t1);
-    mpz_tdiv_r(A, A, n);
-
-#endif
 	
     mpz_clear(n);
     mpz_clear(u);
@@ -3448,6 +3495,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 int check_factor(mpz_t Z, mpz_t n, mpz_t f)
 {
+    //gmp_printf("checking point Z = %Zx against input N = %Zx\n", Z, n);
     mpz_gcd(f, Z, n);
 
 	if (mpz_cmp_ui(f, 1) > 0)

@@ -2547,7 +2547,7 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
     //sigma = 50873471;
     //sigma = 444711979;		// both good
     //work->sigma = sigma;
-    printf("thread %d running curve on sigma = %"PRIu64"\n", tid, work->sigma);
+    //printf("thread %d running curve on sigma = %"PRIu64"\n", tid, work->sigma);
 
 #ifdef PRINT_DEBUG
     printf("sigma = %lu\n", work->sigma);

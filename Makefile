@@ -138,6 +138,7 @@ SRCS = \
 	vecarith.c \
 	vecarith52.c \
 	vec_common.c \
+	calc.c \
     queue.c
 
 
@@ -151,6 +152,7 @@ HEAD = \
 	eratosthenes/soe.h \
 	threadpool.h \
 	util.h \
+	calc.h \
 	queue.h
 
 #---------------------------Make Targets -------------------------

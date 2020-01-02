@@ -34,6 +34,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <unistd.h> 
 #include "queue.h"
 #include "gmp.h"
+#include "calc.h"
 
 // performance comparison
 // http://www.mersenneforum.org/showthread.php?t=16480&page=20
@@ -147,6 +148,7 @@ int main(int argc, char **argv)
 	int pid = getpid();
     uint64_t limit;
     int size_n;
+    str_t input;
 
     // primes
     uint32_t seed_p[6542];
@@ -164,7 +166,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("commencing parallel ecm on %s\n", argv[1]);
+        
     }
 	
     //printf("ECM has been configured with MAXBITS = %d, NWORDS = %d, "
@@ -182,7 +184,14 @@ int main(int argc, char **argv)
     mpz_init(g);
     mpz_init(r);
 
-    mpz_set_str(gmpn, argv[1], 10);
+    sInit(&input);
+    calc_init();
+    toStr(argv[1], &input);
+    calc(&input);
+    calc_finalize();
+
+    mpz_set_str(gmpn, input.s, 10);
+    gmp_printf("commencing parallel ecm on %Zd\n", gmpn);
     size_n = mpz_sizeinbase(gmpn, 2);
 	numcurves = strtoul(argv[2], NULL, 10);
 	b1 = strtoul(argv[3], NULL, 10);	
@@ -350,6 +359,7 @@ int main(int argc, char **argv)
     monty_free(montyconst);
 	free(montyconst);
     free(tdata);
+    sFree(&input);
 
 	return 0;
 }

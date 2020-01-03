@@ -59,8 +59,8 @@ else ifeq ($(COMPILER),gcc)
 else ifeq ($(COMPILER),gcc730)
     CC = gcc-7.3.0
 	CFLAGS += -fopenmp 
-    INC = -I. -I/projects/gmp-6.0.0a/install/include
-    LIBS = -L/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/include
+    LIBS = -L/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/lib
 else
     CC = icc
 	CFLAGS += -qopenmp

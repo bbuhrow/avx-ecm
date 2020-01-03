@@ -922,36 +922,11 @@ void ecm_build_curve_work_fcn(void *vptr)
     mpz_init(X);
     mpz_init(Z);
     mpz_init(A);
-    //mpz_init(t);
-    //mpz_init(n);
-    //mpz_init(one);
-    //mpz_init(r);
-    //
-    //extract_bignum_from_vec_to_mpz(n, tdata[tid].work->n, 0, NWORDS);
-    //extract_bignum_from_vec_to_mpz(one, tdata[tid].mdata->one, 0, NWORDS);
-    //mpz_set_ui(r, 1);
-    //mpz_mul_2exp(r, r, MAXBITS);
 
 	for (i = 0; i < VECLEN; i++)
     {
         int j;
         build_one_curve(&tdata[tid], X, Z, A, 0);
-
-        //if (1)
-        //{
-        //    mpz_add_ui(A, A, 2);
-        //    if (mpz_cmp(A, n) > 0)
-        //    {
-        //        mpz_sub(A, A, n);
-        //    }
-        //    mpz_set_ui(t, 4);
-        //    mpz_invert(t, t, n);
-        //    mpz_mul(A, A, t);
-        //    mpz_tdiv_r(A, A, n);
-        //    mpz_mul(A, A, r);
-        //    mpz_tdiv_r(A, A, n);
-        //    mpz_set(Z, one);
-        //}
 
         insert_mpz_to_vec(tdata[tid].P->X, X, i);
         insert_mpz_to_vec(tdata[tid].P->Z, Z, i);
@@ -959,10 +934,6 @@ void ecm_build_curve_work_fcn(void *vptr)
         tdata[tid].sigma[i] = tdata[tid].work->sigma;
     }
 
-    //gmp_printf("POINT x[%d]: %Zx\n", VECLEN - 1, X);
-    //gmp_printf("POINT z[%d]: %Zx\n", VECLEN - 1, Z);
-    //gmp_printf("POINT a[%d]: %Zx\n", VECLEN - 1, A);
-    //
     //print_vechexbignum(tdata[tid].P->X, "POINT x: ");
     //print_vechexbignum(tdata[tid].P->Z, "POINT z: ");
     //print_vechexbignum(tdata[tid].work->s, "POINT a: ");
@@ -983,10 +954,6 @@ void ecm_build_curve_work_fcn(void *vptr)
     mpz_clear(X);
     mpz_clear(Z);
     mpz_clear(A);
-    //mpz_clear(t);
-    //mpz_clear(n);
-    //mpz_clear(one);
-    //mpz_clear(r);
 
     return;
 }
@@ -2542,7 +2509,7 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
         work->sigma = sigma;
     }
 
-    //sigma = 1632562926;
+    //sigma = work->sigma = 1632562926;
     //sigma = 269820583;
     //sigma = 50873471;
     //sigma = 444711979;		// both good
@@ -2554,7 +2521,8 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
 #endif
 
     // v = 4*sigma
-    mpz_set_ui(v, 4ULL * work->sigma);
+    mpz_set_ui(v, work->sigma);
+    mpz_mul_2exp(v, v, 2);
 
 #ifdef PRINT_DEBUG
     gmp_printf("v = %Zx\n", v);
@@ -2623,6 +2591,9 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
 
     if (0)
     {
+        // This is how gmp-ecm does things since sometimes they want
+        // the Montgomery parameter A.  We always use Suyama's parameterization
+        // so we just go ahead and build (A+2)/4.
         // 4*x*v
         mpz_mul_ui(t2, X, 4);
         mpz_mul(t4, t2, v);
@@ -2662,11 +2633,40 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
         mpz_tdiv_r(X, X, n);
         mpz_mul_2exp(Z, Z, DIGITBITS * NWORDS);
         mpz_tdiv_r(Z, Z, n);
-        //mpz_mul(A, A, t1);
-        //mpz_tdiv_r(A, A, n);
+        mpz_mul_2exp(A, A, DIGITBITS * NWORDS);
+        mpz_tdiv_r(A, A, n);
+
+        //gmp_printf("X/Z = %Zx\n", X);
+        //gmp_printf("Z = %Zx\n", Z);
+        //gmp_printf("A = %Zx\n", A);
+        //
+        //printf("(A+2)*B/4\n");
+
+        mpz_set_ui(t1, 2);
+        mpz_mul_2exp(t1, t1, DIGITBITS * NWORDS);
+        mpz_add(A, A, t1);
+        mpz_tdiv_r(A, A, n);
+
+        if (mpz_odd_p(A))
+        {
+            mpz_add(A, A, n);
+        }
+        mpz_tdiv_q_2exp(A, A, 1);
+
+        if (mpz_odd_p(A))
+        {
+            mpz_add(A, A, n);
+        }
+        mpz_tdiv_q_2exp(A, A, 1);
+
+        //gmp_printf("A = %Zx\n", A);
+        //exit(1);
     }
     else
     {
+        // We always use Suyama's parameterization
+        // so we just go ahead and build (A+2)/4.
+
         // 16*u^3*v
         mpz_mul_ui(t2, X, 16);
         mpz_mul(t4, t2, v);
@@ -2680,7 +2680,6 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
         // of the denom
         mpz_invert(t2, t4, n);
 
-
 #ifdef PRINT_DEBUG
         gmp_printf("inv = %Zx\n", t2);
 #endif
@@ -2693,15 +2692,22 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
         gmp_printf("b = %Zx\n", A);
 #endif
 
+        mpz_invert(t1, Z, n);
+        mpz_mul(X, X, t1);
+        mpz_set_ui(Z, 1);
+
         mpz_mul_2exp(X, X, DIGITBITS * NWORDS);
         mpz_tdiv_r(X, X, n);
         mpz_mul_2exp(Z, Z, DIGITBITS * NWORDS);
         mpz_tdiv_r(Z, Z, n);
         mpz_mul_2exp(A, A, DIGITBITS * NWORDS);
         mpz_tdiv_r(A, A, n);
-    }
 
-    
+        //gmp_printf("X = %Zx\n", X);
+        //gmp_printf("Z = %Zx\n", Z);
+        //gmp_printf("A = %Zx\n", A);
+        //exit(1);
+    }
 	
     mpz_clear(n);
     mpz_clear(u);

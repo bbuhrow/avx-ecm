@@ -36,6 +36,11 @@ Simplifed version of that found in yafu (https://sourceforge.net/projects/yafu/)
 #include "calc.h"
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef WIN64
+#include <string.h>
+#endif
+#include <ctype.h>
+#include <math.h>
 
 #define CALC_VERBOSE 0
 

@@ -112,6 +112,7 @@ typedef struct
 {
     base_t *data;
     int size;
+    uint32_t signmask;
 } bignum;
 
 uint64_t *lcg_state;
@@ -126,6 +127,8 @@ typedef struct
 {
     mpz_t nhat;
     mpz_t rhat;
+    mpz_t gmp_t1;
+    mpz_t gmp_t2;
     bignum *r;
     bignum *n;
     bignum *vnhat;
@@ -154,6 +157,8 @@ bignum * vecInit(void);
 void vecFree(bignum *);
 
 // 52-BIT functions
+void vecmulmod52_1(bignum *a, base_t *b, bignum *c, bignum *n, bignum *s, monty *mdata);
+void vecredc52_base(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecsubmod52(bignum *a, bignum *b, bignum *c, bignum *n);
@@ -162,8 +167,10 @@ void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum 
 void vec_bignum52_mask_sub(bignum *a, bignum *b, bignum *c, uint32_t wmask);
 void vec_bignum52_mask_rshift_1(bignum * u, uint32_t wmask);
 uint32_t vec_bignum52_mask_lshift_1(bignum * u, uint32_t wmask);
+uint32_t vec_bignum52_mask_lshift_n(bignum * u, int n, uint32_t wmask);
 uint32_t vec_eq52(base_t * u, base_t * v, int sz);
 uint32_t vec_gte52(bignum * u, bignum * v);
+void vec_bignum52_add_1(bignum *a, base_t *b, bignum *c);
 
 // 32-BIT functions
 void vecmulmod(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata);

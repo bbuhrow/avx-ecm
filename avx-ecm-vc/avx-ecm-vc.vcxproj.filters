@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\soe">
+      <UniqueIdentifier>{fb4dcc5a-ec25-45b3-92ec-1baa38eb5d96}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\ecm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\primes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\queue.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\soe.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\threadpool.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\util.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vec_common.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vecarith.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vecarith52.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\count.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\linesieve.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\offsets.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\presieve.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\primes.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\roots.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\soe.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\soe_util.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\tiny.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\worker.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\eratosthenes\wrapper.c">
+      <Filter>Source Files\soe</Filter>
+    </ClCompile>
+    <ClCompile Include="..\calc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\avx_ecm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\soe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\threadpool.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\queue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\eratosthenes\soe.h">
+      <Filter>Source Files\soe</Filter>
+    </ClInclude>
+    <ClInclude Include="..\calc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Makefile">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>

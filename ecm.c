@@ -68,22 +68,17 @@ void euclid(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c);
 void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c);
 int check_factor(mpz_t Z, mpz_t n, mpz_t f);
 void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t sigma);
+void build_one_curve_param1(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t X2, mpz_t Z2, 
+    mpz_t A, uint64_t sigma);
 void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *primes, int verbose);
 void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
 void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
 
-base_t spGCD(base_t x, base_t y)
-{
-    base_t a, b, c;
-    a = x; b = y;
-    while (b != 0)
-    {
-        c = a % b;
-        a = b;
-        b = c;
-    }
-    return a;
-}
+// GMP-ECM batch stage1
+unsigned int compute_s(mpz_t s, uint64_t *primes, uint64_t B1);
+int ecm_stage1_batch(mpz_t f, ecm_work *work, ecm_pt *P, bignum * A, 
+    bignum * n, uint64_t B1, mpz_t s, monty *mdata);
+
 
 // a map of the 479 integers relatively prime to 2310. plus 0, 1, and 2310.
 // The map maps into the Pb array of stored elliptic delta points: [d]Q.
@@ -797,6 +792,80 @@ void ecm_stage1_work_fcn(void *vptr);
 void ecm_stage2_work_fcn(void *vptr);
 
 
+base_t spGCD(base_t x, base_t y)
+{
+    base_t a, b, c;
+    a = x; b = y;
+    while (b != 0)
+    {
+        c = a % b;
+        a = b;
+        b = c;
+    }
+    return a;
+}
+
+void
+mpres_get_z(mpz_t R, const mpz_t S, mpz_t modulus, monty *mdata)
+{
+    // not fast, but gets the input S out of Mrep.
+    mpz_set(mdata->gmp_t1, S);
+    //ecm_redc_basecase(R, mdata->gmp_t1, modulus);
+    mpz_mul(mdata->gmp_t2, mdata->nhat, S);
+    mpz_tdiv_r_2exp(mdata->gmp_t2, mdata->gmp_t2, MAXBITS);
+    mpz_mul(mdata->gmp_t2, modulus, mdata->gmp_t2);
+    mpz_add(mdata->gmp_t2, S, mdata->gmp_t2);
+    mpz_tdiv_q_2exp(mdata->gmp_t2, mdata->gmp_t2, MAXBITS);
+    mpz_mod(R, mdata->gmp_t2, modulus);
+}
+
+/* R <- S / 2^n mod modulus. Does not need to be fast. */
+void mpres_div_2exp(mpz_t R, mpz_t S, const unsigned int n, mpz_t modulus)
+{
+    int i;
+
+    if (n == 0)
+    {
+        mpz_set(R, S);
+        return;
+    }
+
+    if (mpz_odd_p(S))
+    {
+        mpz_add(R, S, modulus);
+        mpz_tdiv_q_2exp(R, R, 1);
+    }
+    else
+        mpz_tdiv_q_2exp(R, S, 1);
+
+    for (i = n; i > 1; i--)
+    {
+        if (mpz_odd_p(R))
+        {
+            mpz_add(R, R, modulus);
+        }
+        mpz_tdiv_q_2exp(R, R, 1);
+    }
+
+}
+
+/* R <- S * 2^k mod modulus */
+void mpres_mul_2exp(mpz_t R, mpz_t S, const unsigned long k, mpz_t modulus)
+{
+    mpz_mul_2exp(R, S, k);
+    /* This is the same for all methods: just reduce with original modulus */
+    mpz_mod(R, R, modulus);
+}
+
+void mpres_add_ui(mpz_t R, mpz_t S, const unsigned long n, mpz_t modulus)
+{
+    mpz_set_ui(R, n);
+    mpz_mul_2exp(R, R, MAXBITS);
+    mpz_add(R, R, S);
+    mpz_mod(R, R, modulus);
+}
+
+
 void ecm_sync(void *vptr)
 {
     tpool_t *tpdata = (tpool_t *)vptr;
@@ -910,27 +979,45 @@ void ecm_stage2_work_fcn(void *vptr)
     return;
 }
 
+//#define PARAM1
+
 void ecm_build_curve_work_fcn(void *vptr)
 {
     tpool_t *tpdata = (tpool_t *)vptr;
     thread_data_t *tdata = (thread_data_t *)tpdata->user_data;
     uint32_t tid = tpdata->tindex;
     mpz_t X, Z, A; // , t, n, one, r;
-
+#ifdef PARAM1
+    mpz_t X2, Z2;
+#endif
     int i;
 
     mpz_init(X);
     mpz_init(Z);
     mpz_init(A);
+#ifdef PARAM1
+    mpz_init(X2);
+    mpz_init(Z2);
+#endif
 
 	for (i = 0; i < VECLEN; i++)
     {
         int j;
-        build_one_curve(&tdata[tid], X, Z, A, 0);
+#ifdef PARAM1
+        build_one_curve_param1(&tdata[tid], X, Z, X2, Z2, A, 0); // 65953669); // 36875098);
+        insert_mpz_to_vec(tdata[tid].P->X, X, i);
+        insert_mpz_to_vec(tdata[tid].P->Z, Z, i);
+        insert_mpz_to_vec(tdata[tid].work->pt2.X, X2, i);
+        insert_mpz_to_vec(tdata[tid].work->pt2.Z, Z2, i);
+        insert_mpz_to_vec(tdata[tid].work->s, A, i);
+#else
+        // 8689346476060549ULL
+        build_one_curve(&tdata[tid], X, Z, A, 0); // 6710676431370252287 + i);
 
         insert_mpz_to_vec(tdata[tid].P->X, X, i);
         insert_mpz_to_vec(tdata[tid].P->Z, Z, i);
         insert_mpz_to_vec(tdata[tid].work->s, A, i);
+#endif
         tdata[tid].sigma[i] = tdata[tid].work->sigma;
     }
 
@@ -954,6 +1041,11 @@ void ecm_build_curve_work_fcn(void *vptr)
     mpz_clear(X);
     mpz_clear(Z);
     mpz_clear(A);
+
+#ifdef PARAM1
+    mpz_clear(X2);
+    mpz_clear(Z2);
+#endif
 
     return;
 }
@@ -1491,25 +1583,19 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 1 */
 			d = (2 * d - e) / 3;
 			e = (e - d) / 2;
-
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4); // T = A + B (C)
 
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt2, &work->pt5); // T2 = T + A (B)
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, work->n);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt1, &work->pt2); // B = B + T (A)
 
@@ -1531,10 +1617,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 2 */
 			d = (d - e) / 2;
 			
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt2);		// B = A + B (C)
 			vec_duplicate(mdata, work, s1, d1, &work->pt1);		// A = 2A
@@ -1547,10 +1631,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 3 */
 			d -= e;
 			
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = B + A (C)
 			//add3(xT, zT, xB, zB, xA, zA, xC, zC, n, u, v, w); /* T = f(B,A,C) */
@@ -1579,10 +1661,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 4 */
 			d = (d - e) / 2;
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt2);		// B = B + A (C)
 			vec_duplicate(mdata, work, s2, d2, &work->pt1);		// A = 2A
@@ -1595,10 +1675,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 5 */
 			d /= 2;
 			
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, work->n);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt2, &work->pt3);		// C = C + A (B)
 			vec_duplicate(mdata, work, s2, d2, &work->pt1);		// A = 2A
@@ -1611,25 +1689,20 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 6 */
 			d = d / 3 - e;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
 
 			vec_duplicate(mdata, work, s1, d1, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt5);		// T2 = A + B (C)
 			
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = T + A (A)
 
-			vecsubmod_ptr(work->pt5.X, work->pt5.Z, d2, work->n);
-			vecaddmod_ptr(work->pt5.X, work->pt5.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt5.X, work->pt5.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = T + T2 (C)
 
@@ -1662,26 +1735,20 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 7 */
 			d = (d - 2 * e) / 3;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
 
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt2, &work->pt2);		// B = T + A (B)
 
 			vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
 
@@ -1693,18 +1760,15 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		else if ((d - e) % 3 == 0)
 		{ /* condition 8 */
 			d = (d - e) / 3;
+            // in a run with B1=100M, this condition only executed a few times.
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
 
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, work->n);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, work->n);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt2, &work->pt3);		// C = C + A (B)
 
@@ -1719,15 +1783,12 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			work->pt4.X->data = sw_x;
 			work->pt4.Z->data = sw_z;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, work->n);
 
 			vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, work->n);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, work->n);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, work->n);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
 
@@ -1737,11 +1798,10 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		else /* necessarily e is even here */
 		{ /* condition 9 */
 			e /= 2;
+            // in a run with B1=100M, this condition never executed.
 
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, work->n);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, work->n);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, work->n);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, work->n);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, work->n);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, work->n);
 
 			vec_add(mdata, work, &work->pt1, &work->pt3);		// C = C + B (A)
 			vec_duplicate(mdata, work, s2, d2, &work->pt2);		// B = 2B
@@ -2720,12 +2780,185 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
 	return;
 }
 
+//#define PRINT_DEBUG
+
+void build_one_curve_param1(thread_data_t *tdata, mpz_t X, mpz_t Z, 
+    mpz_t X2, mpz_t Z2, mpz_t A, uint64_t sigma)
+{
+    monty *mdata = tdata->mdata;
+    ecm_work *work = tdata->work;
+    uint32_t tid = tdata->tid;
+    ecm_pt *P = &work->pt1;
+    int i;
+    mpz_t n, v, d, dorig;
+    mpz_init(n);
+    mpz_init(v);
+    mpz_init(d);
+    mpz_init(dorig);
+
+    extract_bignum_from_vec_to_mpz(n, mdata->n, 0, NWORDS);
+
+    if (sigma == 0)
+    {
+        do
+        {
+            work->sigma = lcg_rand(&tdata->lcg_state) & 0x3ffffff;
+        } while (work->sigma < 6);
+    }
+    else
+    {
+        work->sigma = sigma;
+    }
+    
+#ifdef PRINT_DEBUG
+    printf("sigma = %lu\n", work->sigma);
+#endif
+
+    // v = sigma^2
+    mpz_set_ui(v, work->sigma);
+    mpz_mul(v, v, v);
+
+    /* A=4*d-2 with d = sigma^2/2^GMP_NUMB_BITS*/
+      /* Compute d = sigma^2/2^GMP_NUMB_BITS */
+    for (i = 0; i < 52; i++)
+    {
+        if (mpz_tstbit(v, 0) == 1)
+            mpz_add(v, v, n);
+        mpz_div_2exp(v, v, 1);
+    }
+
+    mpz_mod(v, v, n);
+
+#ifdef PRINT_DEBUG
+    gmp_printf("n = %Zd\n", n);
+#endif
+#ifdef PRINT_DEBUG
+    gmp_printf("d = %Zd\n", v);
+#endif
+    mpz_set(dorig, v);
+
+    /* TODO add d!=-1/8*/
+    if (mpz_sgn(v) == 0 || mpz_cmp_ui(v, 1) == 0)
+    {
+        printf("parameter cannot be 0 or 1\n");
+        exit(1);
+    }
+
+    mpz_mul_2exp(v, v, 2);           /* 4d */
+    mpz_sub_ui(v, v, 2);             /* 4d-2 */
+
+    // copy and convert to Montgomery representation
+#ifdef PRINT_DEBUG
+    gmp_printf("4d-2 = %Zd\n", v);
+#endif
+    //mpres_set_z(A, v, n);
+    mpz_mul_2exp(A, v, MAXBITS);
+    mpz_mod(A, A, n);
+#ifdef PRINT_DEBUG
+    gmp_printf("A = %Zd\n", A);
+#endif
+
+    /* Compute d=(A+2)/4 from A and d'=B*d thus d' = 2^(GMP_NUMB_BITS-2)*(A+2) */
+    mpres_get_z(d, A, n, mdata);
+#ifdef PRINT_DEBUG
+    gmp_printf("d (mpres_get_z) = %Zd\n", d);
+#endif
+    mpz_add_ui(d, d, 2);
+#ifdef PRINT_DEBUG
+    gmp_printf("d (mpz_add_ui) = %Zd\n", d);
+#endif
+    mpz_mul_2exp(d, d, 52 - 2);
+#ifdef PRINT_DEBUG
+    gmp_printf("d (mpz_mul_2exp) = %Zd\n", d);
+#endif
+    mpz_mod(d, d, n);
+#ifdef PRINT_DEBUG
+    gmp_printf("d (mpz_mod) = %Zd\n", d);
+#endif
+
+    mpz_set(A, d);
+
+#ifdef PRINT_DEBUG
+    gmp_printf("d' = (A+2)*2^(GMP_NUMB_BITS-2) = %Zd\n", d);
+#endif
+#ifdef PRINT_DEBUG
+    gmp_printf("dorig = %Zd\n", dorig);
+#endif
+
+    //mpres_set_ui(X, 2, n);
+    mpz_set_ui(X, 2);
+    mpz_mul_2exp(X, X, MAXBITS);
+    mpz_mod(X, X, n);
+
+#ifdef PRINT_DEBUG
+    gmp_printf("X = %Zd\n", X);
+#endif
+
+    //mpres_set_ui(Z, 1, n);
+    mpz_set_ui(Z, 1);
+    mpz_mul_2exp(Z, Z, MAXBITS);
+    mpz_tdiv_r(Z, Z, n);
+
+#ifdef PRINT_DEBUG
+    gmp_printf("Z = %Zd\n", Z);
+#endif
+
+    /* Compute 2P : no need to duplicate P, the coordinates are simple. */
+    mpz_set_ui(X2, 9);
+    mpz_mul_2exp(X2, X2, MAXBITS);
+    mpz_tdiv_r(X2, X2, n);
+
+#ifdef PRINT_DEBUG
+    gmp_printf("X2 = %Zd\n", X2);
+#endif
+
+    mpz_set(Z2, d);
+    mpz_mul_2exp(Z2, Z2, MAXBITS);
+    mpz_tdiv_r(Z2, Z2, n);
+    mpres_div_2exp(Z2, Z2, GMP_NUMB_BITS, n);
+
+    mpres_mul_2exp(Z2, Z2, 6, n);
+    mpres_add_ui(Z2, Z2, 8, n); /* P2 <- 2P = (9 : : 64d+8) */
+
+#ifdef PRINT_DEBUG
+    gmp_printf("Z2 = %Zd\n", Z2);
+#endif
+
+    mpz_clear(n);
+    mpz_clear(v);
+    mpz_clear(d);
+
+    return;
+}
+
 //#define TESTMUL
 void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *primes, int verbose)
 {
 	int i;
 	uint64_t q;
 	uint64_t stg1 = (uint64_t)STAGE1_MAX;
+
+#ifdef PARAM1
+    {
+        mpz_t s, f;
+        // timing variables
+        struct timeval stopt;	// stop time of this job
+        struct timeval startt;	// start time of this job
+        double t_time;
+
+        gettimeofday(&startt, NULL);
+        mpz_init(s);
+        mpz_init(f);
+        work->last_pid = compute_s(s, PRIMES, stg1);
+        gettimeofday(&stopt, NULL);
+        t_time = my_difftime(&startt, &stopt);
+        printf("Built product of %lu bits in %1.0f ms\n", mpz_sizeinbase(s, 2), t_time * 1000);
+        ecm_stage1_batch(f, work, P, work->s, work->n, stg1, s, mdata);
+        mpz_clear(s);
+        mpz_clear(f);
+        return;
+    }
+#endif
 
 	// handle the only even case 
 	q = 2;
@@ -2747,7 +2980,11 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 			c *= q;
 		} while ((c * q) < stg1);
 	
-		if ((verbose == 1) && ((i & 511) == 0))
+#ifdef SKYLAKEX
+		if ((verbose == 1) && ((i & 8191) == 0))
+#else
+        if ((verbose == 1) && ((i & 511) == 0))
+#endif
 		{
 			printf("accumulating prime %lu\r", q);
 			fflush(stdout);
@@ -2818,8 +3055,9 @@ void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 	// [2]Q
 	vecCopy(P->Z, Pb[2].Z);
 	vecCopy(P->X, Pb[2].X);
-	vecsubmod_ptr(P->X, P->Z, work->diff1, work->n);
-	vecaddmod_ptr(P->X, P->Z, work->sum1, work->n);
+    vecaddsubmod_ptr(P->X, P->Z, work->sum1, work->diff1, work->n);
+	//vecsubmod_ptr(P->X, P->Z, work->diff1, work->n);
+	//vecaddmod_ptr(P->X, P->Z, work->sum1, work->n);
 	vec_duplicate(mdata, work, work->sum1, work->diff1, &Pb[2]);
 	vecmulmod_ptr(Pb[2].X, Pb[2].Z, Pbprod[2], work->n, work->tt4, mdata);
 
@@ -2850,16 +3088,19 @@ void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 		//z- = original z
 
 		// compute Sd from Sd-1 + S1, requiring Sd-1 - S1 = Sd-2
-		vecsubmod_ptr(P1->X, P1->Z, work->diff1, work->n);
-		vecaddmod_ptr(P1->X, P1->Z, work->sum1, work->n);
-		vecsubmod_ptr(P2->X, P2->Z, work->diff2, work->n);
-		vecaddmod_ptr(P2->X, P2->Z, work->sum2, work->n);
+        vecaddsubmod_ptr(P1->X, P1->Z, work->sum1, work->diff1, work->n);
+        //vecsubmod_ptr(P1->X, P1->Z, work->diff1, work->n);
+		//vecaddmod_ptr(P1->X, P1->Z, work->sum1, work->n);
+        vecaddsubmod_ptr(P2->X, P2->Z, work->sum2, work->diff2, work->n);
+		//vecsubmod_ptr(P2->X, P2->Z, work->diff2, work->n);
+		//vecaddmod_ptr(P2->X, P2->Z, work->sum2, work->n);
 
 		vecmulmod_ptr(work->diff1, work->sum2, work->tt1, work->n, work->tt4, mdata);	//U
 		vecmulmod_ptr(work->sum1, work->diff2, work->tt2, work->n, work->tt4, mdata);	//V
 
-		vecaddmod_ptr(work->tt1, work->tt2, Pout->X, work->n);		//U + V
-		vecsubmod_ptr(work->tt1, work->tt2, Pout->Z, work->n);		//U - V
+        vecaddsubmod_ptr(work->tt1, work->tt2, Pout->X, Pout->Z, work->n);
+		//vecaddmod_ptr(work->tt1, work->tt2, Pout->X, work->n);		//U + V
+		//vecsubmod_ptr(work->tt1, work->tt2, Pout->Z, work->n);		//U - V
 		vecsqrmod_ptr(Pout->X, work->tt1, work->n, work->tt4, mdata);					//(U + V)^2
 		vecsqrmod_ptr(Pout->Z, work->tt2, work->n, work->tt4, mdata);					//(U - V)^2
 
@@ -2929,10 +3170,12 @@ void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 		//z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
 		//x- = [a-d]x
 		//z- = [a-d]z
-		vecaddmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->n);
-		vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, work->n);
-		vecsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->diff1, work->n);
-		vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, work->n);
+		//vecaddmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->n);
+		//vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, work->n);
+		//vecsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->diff1, work->n);
+		//vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, work->n);
+        vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, work->n);
+        vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, work->n);
 		vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
 
 		work->A += ainc;
@@ -2952,6 +3195,47 @@ void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 	return;
 }
+
+// batch inversions:
+// From: H. Shacham and D. Boneh, "Improving SSL Handshake Performance via Batching"
+// A general batched - inversion algorithm proceeds, in three phases, as follows.
+// first, set A1 = x1 and Ai = xi * A(i-1) so that Ai = prod(j=1,i,xj).
+// then, invert An and store in Bn and set Bi = x(i+1) * B(i+1) for i < n.
+// Now we have Bi = prod(j=1,i,xj^-1).
+// finally, set C1 = B1 and Ci = A(i-1) * B(i) for i > 1.
+// Then Ci = xi^-1 for i > 1.
+// each phase takes n-1 multiplications so we have 3n-3 total multiplications
+// and one inversion mod N.
+
+// Now, how do we use this to speed up stage 2?
+// In projective coordinates (Px:Pz) = (Qx:Qz) does not
+// imply that Px=Qx.  We need to cancel the Z-coordinates.
+// to cancel a z-coord we can multiply a point by z^-1, then
+// we have (Px/Pz:1).
+// In the baby-step giant-step algorithm for stage 2 we can normalize
+// all pre-computed Pb's by the batch-inversion process.
+// Likewise if we precompute all Pa's we can normalize in the same way.
+// (If there are too many Pa's then maybe in batches at a time?)
+// Then we simply work with the normalized values and directly 
+// accumulate the cross products (Xr/Zr*1 - Xd/Zd*1)?
+// does the final accumulation then need another inversion?
+
+
+
+#define CROSS_PRODUCT_TEST \
+vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);          \
+vecmulmod_ptr(acc, work->tt1, acc, work->n, work->tt4, mdata);        
+
+// pre-computing the sum/diff multiplies is not efficient - many
+// of the sum/diff product combinations will never be used
+#define CROSS_PRODUCT \
+vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);          \
+vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);          \
+vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);    \
+vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);       \
+vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);                     \
+vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);                
+
 
 void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose)
 {
@@ -2983,7 +3267,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 	ecm_pt *Pb = work->Pb;
 	ecm_pt *Pd = &Pb[rprime_map_U[w]];
 	bignum *acc = work->stg2acc;
-	
+    uint32_t aranges = 0;
 
 	if (verbose == 1)
 		printf("\n");
@@ -3045,12 +3329,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 
 						work->paired++;
 					}
@@ -3088,12 +3367,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 						work->paired++;
 					}
 					else
@@ -3125,10 +3399,12 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				//z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
 				//x- = [a-d]x
 				//z- = [a-d]z
-				vecaddmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->n);
-				vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, work->n);
-				vecsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->diff1, work->n);
-				vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, work->n);
+				//vecaddmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->n);
+				//vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, work->n);
+				//vecsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->diff1, work->n);
+				//vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, work->n);
+                vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, work->n);
+                vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, work->n);
 				vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
 
 				//and Paprod
@@ -3141,6 +3417,8 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 				work->ptadds++;
 			}
+
+            aranges++;
 
 			if (verbose & (debug == 2))
 				printf("amin is now %u\n", amin);  fflush(stdout);
@@ -3211,12 +3489,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 
 					}
 					else
@@ -3276,12 +3549,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					work->paired++;
 				}
@@ -3359,12 +3627,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					else
 					{
@@ -3422,12 +3685,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					work->paired++;
 				}
@@ -3464,12 +3722,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 			//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 			// accumulate the cross product  (zimmerman syntax).
 			// page 342 in C&P
-			vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-			vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-			vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-			vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-			vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-			vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+            CROSS_PRODUCT;
 			work->paired++;
 		}
 	}
@@ -3483,21 +3736,353 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 			//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 			// accumulate the cross product  (zimmerman syntax).
 			// page 342 in C&P
-			vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, work->n);
-			vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, work->n);
-			vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-			vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, work->n);
-			vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, work->n);
-			vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+            CROSS_PRODUCT;
 			work->paired++;
 		}
 	}
+
+    //printf("computed %u new a ranges (%d each)\n", aranges, L - U);
 
 	work->amin = amin;
 	work->last_pid = pid;
 
 	return;
 }
+
+
+/* ECM stage 1 in batch mode, for initial point (x:z) with small coordinates,
+   such that x and z fit into a mp_limb_t.
+   For example we can start with (x=2:y=1) with the curve by^2 = x^3 + ax^2 + x
+   with a = 4d-2 and b=16d+2, then we have to multiply by d=(a+2)/4 in the
+   duplicates.
+   With the change of variable x=b*X, y=b*Y, this curve becomes:
+   Y^2 = X^3 + a/b*X^2 + 1/b^2*X.
+*/
+
+#define MAX_HEIGHT 32
+
+#if defined(_WIN32)
+/* Due to a limitation in GMP on 64-bit Windows, should also
+    affect 32-bit Windows, sufficient memory cannot be allocated
+    for the batch product s when using primes larger than the following */
+#define MAX_B1_BATCH 3124253146UL
+#else
+/* nth_prime(2^(MAX_HEIGHT-1)) */
+#define MAX_B1_BATCH 50685770167ULL
+#endif
+
+unsigned int compute_s(mpz_t s, uint64_t *primes, uint64_t B1)
+{
+    mpz_t acc[MAX_HEIGHT]; /* To accumulate products of prime powers */
+    mpz_t ppz;
+    unsigned int i, j, it;
+    uint64_t pi = 2, pp, maxpp, qi;
+
+    for (j = 0; j < MAX_HEIGHT; j++)
+        mpz_init(acc[j]); /* sets acc[j] to 0 */
+    mpz_init(ppz);
+
+    i = 0;
+    while (pi <= B1)
+    {
+        pp = qi = pi;
+        maxpp = B1 / qi;
+
+        while (pp <= maxpp)
+            pp *= qi;
+
+        mpz_set_ui(ppz, pp);
+
+        if ((i & 1) == 0)
+            mpz_set(acc[0], ppz);
+        else
+            mpz_mul(acc[0], acc[0], ppz);
+
+        j = 0;
+        /* We have accumulated i+1 products so far. If bits 0..j of i are all
+           set, then i+1 is a multiple of 2^(j+1). */
+        while ((i & (1 << j)) != 0)
+        {
+            /* we use acc[MAX_HEIGHT-1] as 0-sentinel below, thus we need
+               j+1 < MAX_HEIGHT-1 */
+            if ((i & (1 << (j + 1))) == 0) /* i+1 is not multiple of 2^(j+2),
+                                              thus add[j+1] is "empty" */
+                mpz_swap(acc[j + 1], acc[j]); /* avoid a copy with mpz_set */
+            else
+                mpz_mul(acc[j + 1], acc[j + 1], acc[j]); /* accumulate in acc[j+1] */
+            mpz_set_ui(acc[j], 1);
+            j++;
+        }
+
+        i++;
+        pi = primes[i];
+    }
+    it = i;
+
+    for (mpz_set(s, acc[0]), j = 1; mpz_cmp_ui(acc[j], 0) != 0; j++)
+        mpz_mul(s, s, acc[j]);
+
+    for (i = 0; i < MAX_HEIGHT; i++)
+        mpz_clear(acc[i]);
+    mpz_clear(ppz);
+
+    return it;
+}
+
+
+
+/* R <- S*m/B mod modulus where m fits in a mp_limb_t.
+   Here S (w in dup_add_batch1) is the result of a subtraction,
+   thus with the notations from http://www.loria.fr/~zimmerma/papers/norm.pdf
+   we have S < 2 \alpha N.
+   Then R < (2 \alpha N \beta + \beta N) = (2 \alpha + 1) N.
+   This result R is used in an addition with u being the result of a squaring
+   thus u < \alpha N, which gives a result < (3 \alpha + 1) N.
+   Finally this result is used in a multiplication with another operand less
+   than 2 \alpha N, thus we want:
+   ((2 \alpha) (3 \alpha + 1) N^2 + \beta N)/\beta \leq \alpha N, i.e.,
+   2 \alpha (3 \alpha + 1) \varepsilon + 1 \leq \alpha
+   This implies \varepsilon \leq 7/2 - sqrt(3)/2 ~ 0.0359, in which case
+   we can take \alpha = 2/3*sqrt(3)+1 ~ 2.1547.
+   In that case no adjustment is needed in mpresn_mul_1.
+   However we prefer to keep the adjustment here, to allow a larger set of
+   inputs (\varepsilon \leq 1/16 = 0.0625 instead of 0.0359).
+*/
+void
+vecmulmod_1(bignum * S, uint64_t *m, bignum * R, bignum * modulus, bignum * t, monty *mdata)
+{
+    //mp_ptr t1 = PTR(modulus->temp1);
+    //mp_ptr t2 = PTR(modulus->temp2);
+    //mp_size_t n = ABSIZ(modulus->orig_modulus);
+    //mp_limb_t q;
+    //
+    //{
+    //    t1[n] = mpn_mul_1(t1, PTR(S), n, m);
+    //    q = t1[0] * modulus->Nprim[0];
+    //    t2[n] = mpn_mul_1(t2, PTR(modulus->orig_modulus), n, q);
+    //
+    //    q = mpn_add_n(PTR(R), t1 + 1, t2 + 1, n);
+    //    q += mpn_add_1(PTR(R), PTR(R), n, t1[0] != 0);
+    //
+    //    while (q != 0)
+    //        q -= mpn_sub_n(PTR(R), PTR(R), PTR(modulus->orig_modulus), n);
+    //}
+    vecmulmod52_1(S, m, R, modulus, t, mdata);
+}
+
+
+/* (x1:z1) <- 2(x1:z1)
+   (x2:z2) <- (x1:z1) + (x2:z2)
+   assume (x2:z2) - (x1:z1) = (2:1)
+   Uses 4 modular multiplies and 4 modular squarings.
+   Inputs are x1, z1, x2, z2, d, n.
+   Use two auxiliary variables: t, w (it seems using one only is not possible
+   if all mpresn_mul and mpresn_sqr calls don't overlap input and output).
+
+   In the batch 1 mode, we pass d_prime such that the actual d is d_prime/beta.
+   Since beta is a square, if d_prime is a square (on 64-bit machines),
+   so is d.
+   In mpresn_mul_1, we multiply by d_prime = beta*d and divide by beta.
+*/
+static void
+dup_add_batch1(bignum *x1, bignum *z1, bignum *x2, bignum *z2,
+    bignum *t, bignum *w, bignum *s, uint64_t *d_prime, bignum *n, monty *mdata)
+{
+    //bignum *t2;
+    //t2 = vecInit();
+    //memcpy(t2->data, d_prime, VECLEN * sizeof(base_t));
+
+    /* active: x1 z1 x2 z2 */
+    //mpresn_addsub(w, z1, x1, z1, n); /* w = x1+z1, z1 = x1-z1 */
+    vecaddsubmod_ptr(x1, z1, w, z1, n);
+
+    /* active: w z1 x2 z2 */
+    //mpresn_addsub(x1, x2, x2, z2, n); /* x1 = x2+z2, x2 = x2-z2 */
+    vecaddsubmod_ptr(x2, z2, x1, x2, n);
+    /* active: w z1 x1 x2 */
+
+    //mpresn_mul(z2, w, x2, n); /* w = (x1+z1)(x2-z2) */
+    vecmulmod_ptr(w, x2, z2, n, s, mdata);
+    /* active: w z1 x1 z2 */
+    //mpresn_mul(x2, z1, x1, n); /* x2 = (x1-z1)(x2+z2) */
+    vecmulmod_ptr(z1, x1, x2, n, s, mdata);
+    /* active: w z1 x2 z2 */
+    //mpresn_sqr(t, z1, n);    /* t = (x1-z1)^2 */
+    vecsqrmod_ptr(z1, t, n, s, mdata);
+    /* active: w t x2 z2 */
+    //mpresn_sqr(z1, w, n);    /* z1 = (x1+z1)^2 */
+    vecsqrmod_ptr(w, z1, n, s, mdata);
+    /* active: z1 t x2 z2 */
+
+    //mpresn_mul(x1, z1, t, n); /* xdup = (x1+z1)^2 * (x1-z1)^2 */
+    vecmulmod_ptr(z1, t, x1, n, s, mdata);
+    /* active: x1 z1 t x2 z2 */
+
+    //mpresn_sub(w, z1, t, n);   /* w = (x1+z1)^2 - (x1-z1)^2 */
+    vecsubmod_ptr(z1, t, w, n);
+    /* active: x1 w t x2 z2 */
+
+    //mpresn_mul_1(z1, w, d_prime, n); /* z1 = d * ((x1+z1)^2 - (x1-z1)^2) */
+    vecmulmod_1(w, d_prime, z1, n, s, mdata);
+    //vecmulmod_ptr(w, t2, z1, n, s, mdata);
+    /* active: x1 z1 w t x2 z2 */
+
+    //mpresn_add(t, t, z1, n);  /* t = (x1-z1)^2 - d* ((x1+z1)^2 - (x1-z1)^2) */
+    vecaddmod_ptr(z1, t, t, n);
+    //vecsubmod_ptr(z1, t, t, n);
+
+    /* active: x1 w t x2 z2 */
+    //mpresn_mul(z1, w, t, n); /* zdup = w * [(x1-z1)^2 - d* ((x1+z1)^2 - (x1-z1)^2)] */
+    vecmulmod_ptr(w, t, z1, n, s, mdata);
+    /* active: x1 z1 x2 z2 */
+
+    //mpresn_addsub(w, z2, x2, z2, n);
+    vecaddsubmod_ptr(x2, z2, w, z2, n);
+    /* active: x1 z1 w z2 */
+
+    //mpresn_sqr(x2, w, n);
+    vecsqrmod_ptr(w, x2, n, s, mdata);
+    /* active: x1 z1 x2 z2 */
+    //mpresn_sqr(w, z2, n);
+    vecsqrmod_ptr(z2, w, n, s, mdata);
+    /* active: x1 z1 x2 w */
+    //mpresn_add(z2, w, w, n);
+    vecaddmod_ptr(w, w, z2, n);
+
+    //vecFree(t2);
+}
+
+
+
+/* Input: x is initial point
+          A is curve parameter in Montgomery's form:
+          g*y^2*z = x^3 + a*x^2*z + x*z^2
+          n is the number to factor
+      B1 is the stage 1 bound
+   Output: If a factor is found, it is returned in x.
+           Otherwise, x contains the x-coordinate of the point computed
+           in stage 1 (with z coordinate normalized to 1).
+       B1done is set to B1 if stage 1 completed normally,
+       or to the largest prime processed if interrupted, but never
+       to a smaller value than B1done was upon function entry.
+   Return value: ECM_FACTOR_FOUND_STEP1 if a factor, otherwise
+           ECM_NO_FACTOR_FOUND
+*/
+/*
+For now we don't take into account go stop_asap and chkfilename
+*/
+int ecm_stage1_batch(mpz_t f, ecm_work *work, ecm_pt *P, bignum * A, 
+    bignum * n, uint64_t B1, mpz_t s, monty *mdata)
+{
+    uint64_t *d_1;
+    mpz_t d_2;
+
+    bignum *x1, *z1, *x2, *z2;
+    uint64_t i;
+    bignum *t, *u;
+    int ret = 0;
+
+    x1 = vecInit();
+    z1 = vecInit();
+    x2 = vecInit();
+    z2 = vecInit();
+    t  = vecInit();
+    u  = vecInit();
+
+    d_1 = (uint64_t *)xmalloc_align(VECLEN * sizeof(uint64_t));
+
+    vecCopy(P->X, x1);
+    vecCopy(P->Z, z1);
+    vecCopy(work->pt2.X, x2);
+    vecCopy(work->pt2.Z, z2);
+    memcpy(d_1, work->s->data, VECLEN * sizeof(base_t));
+
+    //printf("d_1 = ");
+    //for (i = 0; i < VECLEN; i++)
+    //    printf("%lu, ", d_1[i]);
+    //printf("\n");
+
+    /* initialize P */
+    //mpres_set(x1, x, n);
+    //mpres_set_ui(z1, 1, n); /* P1 <- 1P */
+
+    /* Compute d=(A+2)/4 from A and d'=B*d thus d' = 2^(GMP_NUMB_BITS-2)*(A+2) */
+    //mpres_get_z(u, A, n);
+    //mpz_add_ui(u, u, 2);
+    //mpz_mul_2exp(u, u, GMP_NUMB_BITS - 2);
+    //mpres_set_z_for_gcd(u, u, n); /* reduces u mod n */
+    //if (mpz_size(u) > 1)
+    //{
+    //    mpres_get_z(u, A, n);
+    //    gmp_fprintf(stderr,
+    //        "Error, 2^%d*(A+2) should fit in a mp_limb_t, A=%Zd\n",
+    //        GMP_NUMB_BITS - 2, u);
+    //    return -1;
+    //}
+    //d_1 = mpz_getlimbn(u, 0);
+
+    ///* Compute 2P : no need to duplicate P, the coordinates are simple. */
+    //mpres_set_ui(x2, 9, n);
+    ///* here d = d_1 / GMP_NUMB_BITS */
+    ///* warning: mpres_set_ui takes an unsigned long which has only 32 bits
+    //    on Windows, while d_1 might have 64 bits */
+    //if (mpz_size(u) != 1 || mpz_getlimbn(u, 0) != d_1_1)
+    //{
+    //    printf("problem with mpres_set_ui\n");
+    //    exit(-2);
+    //}
+    //mpres_set_z(z2, u, n);
+    //mpres_div_2exp(z2, z2, GMP_NUMB_BITS, n);
+    //
+    //mpres_mul_2exp(z2, z2, 6, n);
+    //mpres_add_ui(z2, z2, 8, n); /* P2 <- 2P = (9 : : 64d+8) */
+
+    /* invariant: if j represents the upper bits of s,
+       then P1 = j*P and P2=(j+1)*P */
+
+    //mpresn_pad(x1, n);
+    //mpresn_pad(z1, n);
+    //mpresn_pad(x2, n);
+    //mpresn_pad(z2, n);
+
+    /* now perform the double-and-add ladder */
+    for (i = mpz_sizeinbase(s, 2) - 1; i-- > 0;)
+    {
+        if (mpz_tstbit(s, i) == 0) /* (j,j+1) -> (2j,2j+1) */
+            /* P2 <- P1+P2    P1 <- 2*P1 */
+            dup_add_batch1(x1, z1, x2, z2, t, u, mdata->mtmp1, d_1, n, mdata);
+        else /* (j,j+1) -> (2j+1,2j+2) */
+            /* P1 <- P1+P2     P2 <- 2*P2 */
+            dup_add_batch1(x2, z2, x1, z1, t, u, mdata->mtmp1, d_1, n, mdata);
+    }
+
+    //mpresn_unpad(x1);
+    //mpresn_unpad(z1);
+
+    // this sets x = x1/z1, but our vececm expects
+    // them to be separate.
+    //if (!mpres_invert(u, z1, n)) /* Factor found? */
+    //{
+    //    mpres_gcd(f, z1, n);
+    //    ret = 1;
+    //}
+    //mpres_mul(x, x1, u, n);
+    //vecmulmod_ptr(x1, u, x, mdata->mtmp1, n, mdata);
+
+    vecCopy(x1, P->X);
+    vecCopy(z1, P->Z);
+
+    vecFree(x1);
+    vecFree(z1);
+    vecFree(x2);
+    vecFree(z2);
+    vecFree(t);
+    vecFree(u);
+    align_free(d_1);
+
+    return ret;
+}
+
 
 int check_factor(mpz_t Z, mpz_t n, mpz_t f)
 {

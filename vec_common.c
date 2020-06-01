@@ -103,6 +103,8 @@ monty* monty_alloc(void)
 
     mpz_init(mdata->nhat);
     mpz_init(mdata->rhat);
+    mpz_init(mdata->gmp_t1);
+    mpz_init(mdata->gmp_t2);
     mdata->r = vecInit();
     mdata->n = vecInit();
     mdata->vnhat = vecInit();
@@ -143,6 +145,8 @@ void monty_free(monty *mdata)
     vecFree(mdata->rmask);
     mpz_clear(mdata->nhat);
     mpz_clear(mdata->rhat);
+    mpz_clear(mdata->gmp_t1);
+    mpz_clear(mdata->gmp_t2);
 
     align_free(mdata->vrho);
 

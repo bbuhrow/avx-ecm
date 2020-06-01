@@ -131,7 +131,6 @@ void insert_mpz_to_vec(bignum *vec_dest, mpz_t src, int lane)
     return;
 }
 
-
 int main(int argc, char **argv)
 {
     thread_data_t *tdata;
@@ -281,7 +280,7 @@ int main(int argc, char **argv)
 
     mpz_set_ui(r, 1);
     mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-    //gmp_printf("r = %Zd\n", r);
+    //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
     mpz_invert(montyconst->nhat, gmpn, r);
     mpz_sub(montyconst->nhat, r, montyconst->nhat);
     mpz_invert(montyconst->rhat, r, gmpn);

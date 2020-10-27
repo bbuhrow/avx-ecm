@@ -1,5 +1,5 @@
 # avx-ecm
-Computes parallel curves of the ECM (Elliptic Curve Method) factoring algorithm using AVX-512 vector arithmetic.
+Computes parallel curves of the ECM (Elliptic Curve Method) factoring algorithm using AVX-512 vector arithmetic.  On CPUs where AVX512 is supported, AVX-ECM has been observed to have about 1.5 to 2.5 times the throughput (curves/sec) of GMP-ECM, for numbers up to a thousand bits or so.  Large numbers will be more efficient with GMP-ECM because AVX-ECM so far does not use sub-quadratic multiplier algorithms.
 
 Both stage 1 and stage 2 are computed in parallel, but stage 2 is just the standard continuation with pairing (by default, B2=100xB1).
 

@@ -32,6 +32,7 @@ either expressed or implied, of the FreeBSD Project.
 
 
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef struct
 {

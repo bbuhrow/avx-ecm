@@ -61,6 +61,7 @@ either expressed or implied, of the FreeBSD Project.
 //#ifndef MAXBITS
 //#define MAXBITS 1040
 //#endif
+//#define DIGITBITS 32
 
 #ifndef DIGITBITS
 #define DIGITBITS 52
@@ -142,13 +143,15 @@ typedef struct
     bignum **g;             // storage for windowed method precomputation
     base_t *vrho;
     base_t rho;
+    int nbits;
+    int isMersenne;
 } monty;
 
-void print_vechexbignum(bignum *a, const char *pre);
 void print_hexbignum(bignum *a, const char *pre);
+void print_hex(bignum *a, const char *pre);
 void print_vechex(base_t *a, int v, int n, const char *pre);
 monty * monty_alloc(void);
-void monty_free(monty *mdata);
+void vec_monty_free(monty *mdata);
 void copy_vec_lane(bignum *src, bignum *dest, int num, int size);
 void vecCopy(bignum * src, bignum * dest);
 void vecCopyn(bignum * src, bignum * dest, int size);
@@ -161,6 +164,8 @@ void vecmulmod52_1(bignum *a, base_t *b, bignum *c, bignum *n, bignum *s, monty 
 void vecredc52_base(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
+void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata);
+void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata);
 void vecsubmod52(bignum *a, bignum *b, bignum *c, bignum *n);
 void vecaddmod52(bignum *a, bignum *b, bignum *c, bignum *n);
 void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n);
@@ -251,6 +256,7 @@ typedef struct
 
 } ecm_work;
 
+
 typedef struct
 {
     mpz_t factor;
@@ -266,6 +272,7 @@ typedef struct
     uint32_t total_threads;
     uint32_t phase_done;
     uint32_t ecm_phase;     // 0 == build curve, 1 == stage 1, 2 == stage 2
+	int save_b1;
 } thread_data_t;
 
 typedef struct
@@ -284,7 +291,7 @@ void ecm_work_free(ecm_work *work);
 base_t nump;
 
 // global limits
-base_t STAGE1_MAX;
+uint64_t STAGE1_MAX;
 uint64_t STAGE2_MAX;
 uint32_t PRIME_RANGE;
 int DO_STAGE2;

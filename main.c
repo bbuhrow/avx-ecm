@@ -131,6 +131,7 @@ void insert_mpz_to_vec(bignum *vec_dest, mpz_t src, int lane)
     return;
 }
 
+
 int main(int argc, char **argv)
 {
     thread_data_t *tdata;
@@ -148,6 +149,7 @@ int main(int argc, char **argv)
     uint64_t limit;
     int size_n;
     str_t input;
+	int isMersenne = 0, forceNoMersenne = 0;
 
     // primes
     uint32_t seed_p[6542];
@@ -163,15 +165,7 @@ int main(int argc, char **argv)
         printf("usage: avx-ecm $input $numcurves $B1 [$threads] [$B2]\n");
         exit(1);
     }
-    else
-    {
-        
-    }
 	
-    //printf("ECM has been configured with MAXBITS = %d, NWORDS = %d, "
-    //    "VECLEN = %d\n", 
-    //    MAXBITS, NWORDS, VECLEN);
-
 	gettimeofday(&startt, NULL);
 
 	if (pid <= 0)
@@ -191,12 +185,71 @@ int main(int argc, char **argv)
 
     mpz_set_str(gmpn, input.s, 10);
     gmp_printf("commencing parallel ecm on %Zd\n", gmpn);
+    
+	// check for Mersenne inputs
     size_n = mpz_sizeinbase(gmpn, 2);
+
+    for (i = size_n; i < 2048; i++)
+    {
+        mpz_set_ui(r, 1);
+        mpz_mul_2exp(r, r, i);
+        mpz_sub_ui(r, r, 1);
+        mpz_mod(g, r, gmpn);
+        if (mpz_cmp_ui(g, 0) == 0)
+        {
+            size_n = i;
+            isMersenne = 1;
+            break;
+        }
+    }
+		
 	numcurves = strtoul(argv[2], NULL, 10);
 	b1 = strtoul(argv[3], NULL, 10);	
 	STAGE1_MAX = b1;
 	STAGE2_MAX = 100ULL * (uint64_t)b1;
 
+    //if (DIGITBITS == 52)
+    //{
+    //    MAXBITS = 208;
+    //    while (MAXBITS <= size_n)
+    //    {
+    //        MAXBITS += 208;
+    //    }
+    //}
+    //else
+    //{
+    //    MAXBITS = 128;
+    //    while (MAXBITS <= size_n)
+    //    {
+    //        MAXBITS += 128;
+    //    }
+    //}
+    //
+    //NWORDS = MAXBITS / DIGITBITS;
+    //NBLOCKS = NWORDS / BLOCKWORDS;
+	
+	// compute NBLOCKS if using the actual size of the input (non-Mersenne)
+    if (DIGITBITS == 52)
+    {
+        MAXBITS = 208;
+        while (MAXBITS <= mpz_sizeinbase(gmpn, 2))
+        {
+            MAXBITS += 208;
+        }
+    }
+    else
+    {
+        MAXBITS = 128;
+        while (MAXBITS <= mpz_sizeinbase(gmpn, 2))
+        {
+            MAXBITS += 128;
+        }
+    }
+
+    NWORDS = MAXBITS / DIGITBITS;
+    NBLOCKS = NWORDS / BLOCKWORDS;
+
+    // and compute NBLOCKS if using Mersenne mod
     if (DIGITBITS == 52)
     {
         MAXBITS = 208;
@@ -214,8 +267,22 @@ int main(int argc, char **argv)
         }
     }
 
-    NWORDS = MAXBITS / DIGITBITS;
-    NBLOCKS = NWORDS / BLOCKWORDS;
+    if (isMersenne && ((double)NWORDS / ((double)MAXBITS / (double)DIGITBITS) < 0.7))
+    {
+        printf("Mersenne input 2^%d - 1 determined to be faster by REDC\n", size_n);
+        forceNoMersenne = 1;
+    }
+    else
+    {
+        NWORDS = MAXBITS / DIGITBITS;
+        NBLOCKS = NWORDS / BLOCKWORDS;
+    }
+
+    if (forceNoMersenne)
+    {
+        isMersenne = 0;
+        size_n = mpz_sizeinbase(gmpn, 2);
+    }
 
     printf("ECM has been configured with DIGITBITS = %u, VECLEN = %d, GMP_LIMB_BITS = %d\n",
         DIGITBITS, VECLEN, GMP_LIMB_BITS);
@@ -278,23 +345,70 @@ int main(int argc, char **argv)
     // expects n to be in packed 64-bit form
     montyconst = monty_alloc();
 
-    mpz_set_ui(r, 1);
-    mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-    //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
-    mpz_invert(montyconst->nhat, gmpn, r);
-    mpz_sub(montyconst->nhat, r, montyconst->nhat);
-    mpz_invert(montyconst->rhat, r, gmpn);
-    broadcast_mpz_to_vec(montyconst->n, gmpn);
-    broadcast_mpz_to_vec(montyconst->r, r);
-    broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
-    broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
-    mpz_tdiv_r(r, r, gmpn);
-    broadcast_mpz_to_vec(montyconst->one, r);
+	if (isMersenne)
+    {
+        // TBD: may want to check if the input number is small
+        // enough compared to the base Mersenne that normal Montgomery
+        // arithmetic would be faster.
+        montyconst->isMersenne = 1;
+        montyconst->nbits = size_n;
+        mpz_set(montyconst->nhat, gmpn);           // remember input N
+        // do all math w.r.t the Mersenne number
+        mpz_set_ui(gmpn, 1);
+        mpz_mul_2exp(gmpn, gmpn, size_n);
+        mpz_sub_ui(gmpn, gmpn, 1);
+        broadcast_mpz_to_vec(montyconst->n, gmpn);
+
+        mpz_set_ui(r, 1);
+        mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
+        //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
+        //mpz_invert(montyconst->nhat, N, r);
+        //mpz_sub(montyconst->nhat, r, montyconst->nhat);
+        mpz_invert(montyconst->rhat, r, gmpn);
+        broadcast_mpz_to_vec(montyconst->n, gmpn);
+        broadcast_mpz_to_vec(montyconst->r, r);
+        broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
+        broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
+        //mpz_tdiv_r(r, r, N);
+        mpz_set_ui(r, 1);
+        broadcast_mpz_to_vec(montyconst->one, r);
+    }
+    else
+    {
+        montyconst->isMersenne = 0;
+        montyconst->nbits = mpz_sizeinbase(gmpn, 2);
+        mpz_set_ui(r, 1);
+        mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
+        //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
+        mpz_invert(montyconst->nhat, gmpn, r);
+        mpz_sub(montyconst->nhat, r, montyconst->nhat);
+        mpz_invert(montyconst->rhat, r, gmpn);
+        broadcast_mpz_to_vec(montyconst->n, gmpn);
+        broadcast_mpz_to_vec(montyconst->r, r);
+        broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
+        broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
+        mpz_tdiv_r(r, r, gmpn);
+        broadcast_mpz_to_vec(montyconst->one, r);
+    }
+	
+    //mpz_set_ui(r, 1);
+    //mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
+    ////gmp_printf("r = %Zd\n", r);
+    //mpz_invert(montyconst->nhat, gmpn, r);
+    //mpz_sub(montyconst->nhat, r, montyconst->nhat);
+    //mpz_invert(montyconst->rhat, r, gmpn);
+    //broadcast_mpz_to_vec(montyconst->n, gmpn);
+    //broadcast_mpz_to_vec(montyconst->r, r);
+    //broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
+    //broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
+    //mpz_tdiv_r(r, r, gmpn);
+    //broadcast_mpz_to_vec(montyconst->one, r);
     //gmp_printf("n = %Zx\n", gmpn);
     //gmp_printf("rhat = %Zx\n", montyconst->rhat);
     //gmp_printf("nhat = %Zx\n", montyconst->nhat);
     //gmp_printf("one = %Zx\n", r);
     //printf("rho = %016llx\n", mpz_get_ui(montyconst->nhat) & MAXDIGIT);
+	
     for (i = 0; i < VECLEN; i++)
     {
         montyconst->vrho[i] = mpz_get_ui(montyconst->nhat) & MAXDIGIT;
@@ -302,8 +416,18 @@ int main(int argc, char **argv)
     
     if (DIGITBITS == 52)
     {
-        vecmulmod_ptr = &vecmulmod52;
-        vecsqrmod_ptr = &vecsqrmod52;
+		if (montyconst->isMersenne)
+        {
+            vecmulmod_ptr = &vecmulmod52_mersenne;
+            vecsqrmod_ptr = &vecsqrmod52_mersenne;
+            printf("Using special Mersenne mod for factor of: 2^%d-1\n", montyconst->nbits);
+        }
+        else
+        {
+            vecmulmod_ptr = &vecmulmod52;
+            vecsqrmod_ptr = &vecsqrmod52;
+        }
+
         vecaddmod_ptr = &vecaddmod52;
         vecsubmod_ptr = &vecsubmod52;
         vecaddsubmod_ptr = &vec_simul_addsub52;
@@ -428,6 +552,8 @@ void thread_init(thread_data_t *tdata, monty *mdata)
     vecCopy(mdata->one, tdata->mdata->one);
     vecCopy(mdata->vnhat, tdata->mdata->vnhat);
     vecCopy(mdata->vrhat, tdata->mdata->vrhat);
+	tdata->mdata->nbits = mdata->nbits;
+    tdata->mdata->isMersenne = mdata->isMersenne;
     memcpy(tdata->mdata->vrho, mdata->vrho, VECLEN * sizeof(base_t));
 
     return;

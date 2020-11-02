@@ -1874,7 +1874,6 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
     return;
 }
 
-
 void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata)
 {
     int i, j, k;
@@ -3951,7 +3950,7 @@ void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty*mdata)
     return;
 }
 
-void vecaddmod52(bignum *a, bignum *b, bignum *c, bignum *n)
+void vecaddmod52(bignum *a, bignum *b, bignum *c, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -3986,7 +3985,7 @@ void vecaddmod52(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = NWORDS - 1; i >= 0; i--)
     {
         cvec = _mm512_load_epi64(c->data + i * VECLEN);
-        nvec = _mm512_load_epi64(n->data + i * VECLEN);
+        nvec = _mm512_load_epi64(mdata->n->data + i * VECLEN);
         // compare those that have not already been decided using the mask
         mask |= _mm512_mask_cmp_epu64_mask(~mask2, cvec, nvec, _MM_CMPINT_GT);
         mask2 |= _mm512_mask_cmp_epu64_mask(~mask2, cvec, nvec, _MM_CMPINT_LT);
@@ -4007,14 +4006,66 @@ void vecaddmod52(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = 0; (i < NWORDS) && (mask > 0); i++)
     {
         cvec = _mm512_load_epi64(c->data + i * VECLEN);
-        nvec = _mm512_load_epi64(n->data + i * VECLEN);
+        nvec = _mm512_load_epi64(mdata->n->data + i * VECLEN);
         bvec = _mm512_mask_sbb_epi52(cvec, mask, carry, nvec, &carry);
         _mm512_store_epi64(c->data + i * VECLEN, bvec);
     }
     return;
 }
 
-void vecsubmod52(bignum *a, bignum *b, bignum *c, bignum *n)
+void vecaddmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // a, b, c, and n are aligned
+    // a and b are both positive
+    // n is the montgomery base
+    int i;
+
+    __mmask8 carry = 0;
+    __mmask8 mask = 0;
+    __mmask8 mask2 = 0;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    __m512i nvec;
+    int bshift = mdata->nbits % 52;
+    int wshift = mdata->nbits / 52;
+
+    // add
+    for (i = 0; i < NWORDS; i++)
+    {
+        avec = _mm512_load_epi64(a->data + i * VECLEN);
+        bvec = _mm512_load_epi64(b->data + i * VECLEN);
+        cvec = _mm512_adc_epi52(avec, carry, bvec, &carry);
+        _mm512_store_epi64(c->data + i * VECLEN, cvec);
+    }
+
+    // check for a carry.
+    avec = _mm512_load_epi64(c->data + wshift * VECLEN);
+    carry = _mm512_test_epi64_mask(avec, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+
+    // the modulo is just the low part plus 1 (the carry, if present).
+    cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
+    bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+    _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
+
+    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    {
+        cvec = _mm512_load_epi64(c->data + i * VECLEN);
+        bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+        _mm512_store_epi64(c->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi64(c->data + wshift * VECLEN);
+    _mm512_store_epi64(c->data + wshift * VECLEN,
+        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), avec));
+
+    return;
+}
+
+void vecsubmod52(bignum *a, bignum *b, bignum *c, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -4049,10 +4100,67 @@ void vecsubmod52(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = 0; (i < NWORDS) && (mask > 0); i++)
     {
         avec = _mm512_load_epi64(c->data + i * VECLEN);
-        nvec = _mm512_load_epi64(n->data + i * VECLEN);
+        nvec = _mm512_load_epi64(mdata->n->data + i * VECLEN);
         cvec = _mm512_mask_adc_epi52(avec, mask, carry, nvec, &carry);
         _mm512_store_epi64(c->data + i * VECLEN, cvec);
     }
+    return;
+}
+
+void vecsubmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // s1 is of length VECLEN
+    // a, b, c, n, and s1 are aligned
+    // a and b are both positive
+    // a >= b
+    // n is the montgomery base
+    int i;
+
+    __mmask8 carry = 0;
+    __mmask8 mask = 0;
+    __mmask8 mask2 = 0;
+    __m512i nvec;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    int bshift = mdata->nbits % 52;
+    int wshift = mdata->nbits / 52;
+
+    // subtract
+    carry = 0;
+    //for (i = 0; i < NWORDS; i++)
+    for (i = 0; i <= wshift; i++)
+    {
+        avec = _mm512_load_epi64(a->data + i * VECLEN);
+        bvec = _mm512_load_epi64(b->data + i * VECLEN);
+        cvec = _mm512_sbb_epi52(avec, carry, bvec, &carry);
+        _mm512_store_epi64(c->data + i * VECLEN, cvec);
+    }
+
+    // if we had a final carry, then b was bigger than a so we need to re-add n.
+    mask = carry;
+    carry = 0;
+    nvec = _mm512_set1_epi64(0xfffffffffffffULL);
+    __m512i zero = _mm512_set1_epi64(0);
+    for (i = 0; i <= wshift; i++)
+    {
+        cvec = _mm512_load_epi64(c->data + i * VECLEN);
+        bvec = _mm512_mask_adc_epi52(cvec, mask, carry, nvec, &carry);
+        _mm512_store_epi64(c->data + i * VECLEN, bvec);
+    }
+
+    //for (; i < NWORDS; i++)
+    //{
+    //    _mm512_store_epi64(c->data + i * VECLEN, _mm512_set1_epi64(0));
+    //}
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi64(c->data + wshift * VECLEN);
+    _mm512_store_epi64(c->data + wshift * VECLEN,
+        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), avec));
+
     return;
 }
 
@@ -4130,7 +4238,7 @@ void vecsignedaddmod52(bignum *a, bignum *b, bignum *c, bignum *n)
     return;
 }
 
-void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n)
+void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -4189,7 +4297,7 @@ void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum 
     for (i = NWORDS - 1; i >= 0; i--)
     {
         cvec = _mm512_load_epi64(sum->data + i * VECLEN);
-        nvec = _mm512_load_epi64(n->data + i * VECLEN);
+        nvec = _mm512_load_epi64(mdata->n->data + i * VECLEN);
         // compare those that have not already been decided using the mask
         cmask |= _mm512_mask_cmp_epu64_mask(~cmask2, cvec, nvec, _MM_CMPINT_GT);
         cmask2 |= _mm512_mask_cmp_epu64_mask(~cmask2, cvec, nvec, _MM_CMPINT_LT);
@@ -4211,7 +4319,7 @@ void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum 
     {
         // conditional sub
         cvec = _mm512_load_epi64(sum->data + i * VECLEN);
-        nvec = _mm512_load_epi64(n->data + i * VECLEN);
+        nvec = _mm512_load_epi64(mdata->n->data + i * VECLEN);
         bvec = _mm512_mask_sbb_epi52(cvec, cmask, borrow, nvec, &borrow);
         _mm512_store_epi64(sum->data + i * VECLEN, bvec);
 
@@ -4220,6 +4328,92 @@ void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum 
         bvec = _mm512_mask_adc_epi52(cvec, bmask, carry, nvec, &carry);
         _mm512_store_epi64(diff->data + i * VECLEN, bvec);
     }
+
+    return;
+}
+
+void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff,
+    monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // a, b, c, and n are aligned
+    // a and b are both positive
+    // n is the montgomery base
+    // produce sum = a + b and diff = a - b at the same time which
+    // saves 3N loads (only have to load a,b, and n once)
+    int i;
+
+    __mmask8 carry = 0;
+    __mmask8 borrow = 0;
+    __mmask8 cmask = 0;
+    __mmask8 cmask2 = 0;
+    __mmask8 bmask = 0;
+    __mmask8 bmask2 = 0;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    __m512i nvec;
+    int bshift = mdata->nbits % 52;
+    int wshift = mdata->nbits / 52;
+
+    //for (i = 0; i < NWORDS; i++)
+    for (i = 0; i <= wshift; i++)
+    {
+        // add
+        avec = _mm512_load_epi64(a->data + i * VECLEN);
+        bvec = _mm512_load_epi64(b->data + i * VECLEN);
+        cvec = _mm512_adc_epi52(avec, carry, bvec, &carry);
+        _mm512_store_epi64(sum->data + i * VECLEN, cvec);
+
+        // sub
+        cvec = _mm512_sbb_epi52(avec, borrow, bvec, &borrow);
+        _mm512_store_epi64(diff->data + i * VECLEN, cvec);
+    }
+
+    bmask = borrow;     // result too small, need to add n
+
+    // check for a carry.
+    avec = _mm512_load_epi64(sum->data + wshift * VECLEN);
+    carry = _mm512_test_epi64_mask(avec, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+
+    // the modulo is just the low part plus 1 (the carry, if present).
+    cvec = _mm512_load_epi64(sum->data + 0 * VECLEN);
+    bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+    _mm512_store_epi64(sum->data + 0 * VECLEN, bvec);
+
+    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    {
+        cvec = _mm512_load_epi64(sum->data + i * VECLEN);
+        bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+        _mm512_store_epi64(sum->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi64(sum->data + wshift * VECLEN);
+    _mm512_store_epi64(sum->data + wshift * VECLEN,
+        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), avec));
+
+    carry = 0;
+    nvec = _mm512_set1_epi64(0xfffffffffffffULL);
+    __m512i zero = _mm512_set1_epi64(0);
+    for (i = 0; i <= wshift; i++)
+    {
+        // conditional add
+        cvec = _mm512_load_epi64(diff->data + i * VECLEN);
+        bvec = _mm512_mask_adc_epi52(cvec, bmask, carry, nvec, &carry);
+        _mm512_store_epi64(diff->data + i * VECLEN, bvec);
+    }
+
+    //for (; i < NWORDS; i++)
+    //{
+    //    _mm512_store_epi64(diff->data + i * VECLEN, _mm512_set1_epi64(0));
+    //}
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi64(diff->data + wshift * VECLEN);
+    _mm512_store_epi64(diff->data + wshift * VECLEN,
+        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), avec));
 
     return;
 }

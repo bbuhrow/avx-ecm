@@ -2076,7 +2076,7 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
     return;
 }
 
-void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n)
+void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -2122,7 +2122,7 @@ void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n
     for (i = NWORDS - 1; i >= 0; i--)
     {
         cvec = _mm512_load_epi32(sum->data + i * VECLEN);
-        nvec = _mm512_load_epi32(n->data + i * VECLEN);
+        nvec = _mm512_load_epi32(mdata->n->data + i * VECLEN);
         // compare those that have not already been decided using the mask
         cmask |= _mm512_mask_cmp_epu32_mask(~cmask2, cvec, nvec, _MM_CMPINT_GT);
         cmask2 |= _mm512_mask_cmp_epu32_mask(~cmask2, cvec, nvec, _MM_CMPINT_LT);
@@ -2144,7 +2144,7 @@ void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n
     {
         // conditional sub
         cvec = _mm512_load_epi32(sum->data + i * VECLEN);
-        nvec = _mm512_load_epi32(n->data + i * VECLEN);
+        nvec = _mm512_load_epi32(mdata->n->data + i * VECLEN);
         bvec = _mm512_mask_sbb_epi32(cvec, cmask, borrow, nvec, &borrow);
         _mm512_store_epi32(sum->data + i * VECLEN, bvec);
 
@@ -2157,7 +2157,7 @@ void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n
     return;
 }
 
-void vecaddmod(bignum *a, bignum *b, bignum *c, bignum *n)
+void vecaddmod(bignum *a, bignum *b, bignum *c, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -2192,7 +2192,7 @@ void vecaddmod(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = NWORDS - 1; i >= 0; i--)
     {
         cvec = _mm512_load_epi32(c->data + i * VECLEN);
-        nvec = _mm512_load_epi32(n->data + i * VECLEN);
+        nvec = _mm512_load_epi32(mdata->n->data + i * VECLEN);
         // compare those that have not already been decided using the mask
         mask |= _mm512_mask_cmp_epu32_mask(~mask2, cvec, nvec, _MM_CMPINT_GT);
         mask2 |= _mm512_mask_cmp_epu32_mask(~mask2, cvec, nvec, _MM_CMPINT_LT);
@@ -2213,7 +2213,7 @@ void vecaddmod(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = 0; i < NWORDS; i++)
     {
         cvec = _mm512_load_epi32(c->data + i * VECLEN);
-        nvec = _mm512_load_epi32(n->data + i * VECLEN);
+        nvec = _mm512_load_epi32(mdata->n->data + i * VECLEN);
         bvec = _mm512_mask_sbb_epi32(cvec, mask, carry, nvec, &carry);
         _mm512_store_epi32(c->data + i * VECLEN, bvec);
     }
@@ -2221,7 +2221,7 @@ void vecaddmod(bignum *a, bignum *b, bignum *c, bignum *n)
     return;
 }
 
-void vecsubmod(bignum *a, bignum *b, bignum *c, bignum *n)
+void vecsubmod(bignum *a, bignum *b, bignum *c, monty* mdata)
 {
     // assumptions:
     // a, b, c are of length VECLEN * NWORDS
@@ -2256,7 +2256,7 @@ void vecsubmod(bignum *a, bignum *b, bignum *c, bignum *n)
     for (i = 0; (i < NWORDS) && (mask > 0); i++)
     {
         avec = _mm512_load_epi32(c->data + i * VECLEN);
-        nvec = _mm512_load_epi32(n->data + i * VECLEN);
+        nvec = _mm512_load_epi32(mdata->n->data + i * VECLEN);
         cvec = _mm512_mask_adc_epi32(avec, mask, carry, nvec, &carry);
         _mm512_store_epi32(c->data + i * VECLEN, cvec);
     }

@@ -164,11 +164,14 @@ void vecmulmod52_1(bignum *a, base_t *b, bignum *c, bignum *n, bignum *s, monty 
 void vecredc52_base(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
+void vecsubmod52(bignum* a, bignum* b, bignum* c, monty* mdata);
+void vecaddmod52(bignum* a, bignum* b, bignum* c, monty* mdata);
+void vec_simul_addsub52(bignum* a, bignum* b, bignum* sum, bignum* diff, monty* mdata);
 void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata);
 void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata);
-void vecsubmod52(bignum *a, bignum *b, bignum *c, bignum *n);
-void vecaddmod52(bignum *a, bignum *b, bignum *c, bignum *n);
-void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n);
+void vecsubmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata);
+void vecaddmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata);
+void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff, monty* mdata);
 void vec_bignum52_mask_sub(bignum *a, bignum *b, bignum *c, uint32_t wmask);
 void vec_bignum52_mask_rshift_1(bignum * u, uint32_t wmask);
 uint32_t vec_bignum52_mask_lshift_1(bignum * u, uint32_t wmask);
@@ -180,9 +183,9 @@ void vec_bignum52_add_1(bignum *a, base_t *b, bignum *c);
 // 32-BIT functions
 void vecmulmod(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata);
 void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata);
-void vecsubmod(bignum *a, bignum *b, bignum *c, bignum *n);
-void vecaddmod(bignum *a, bignum *b, bignum *c, bignum *n);
-void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, bignum *n);
+void vecsubmod(bignum *a, bignum *b, bignum *c, monty *mdata);
+void vecaddmod(bignum *a, bignum *b, bignum *c, monty *mdata);
+void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, monty* mdata);
 void vec_bignum_mask_sub(bignum *a, bignum *b, bignum *c, uint32_t wmask);
 void vec_bignum_mask_rshift_1(bignum * u, uint32_t wmask);
 uint32_t vec_bignum_mask_lshift_1(bignum * u, uint32_t wmask);
@@ -195,9 +198,9 @@ void insert_mpz_to_vec(bignum *vec_dest, mpz_t src, int lane);
 
 void(*vecmulmod_ptr)(bignum *, bignum *, bignum *, bignum *, bignum *, monty *);
 void(*vecsqrmod_ptr)(bignum *, bignum *, bignum *, bignum *, monty *);
-void(*vecaddmod_ptr)(bignum *, bignum *, bignum *, bignum *);
-void(*vecsubmod_ptr)(bignum *, bignum *, bignum *, bignum *);
-void(*vecaddsubmod_ptr)(bignum *, bignum *, bignum *, bignum *, bignum *);
+void(*vecaddmod_ptr)(bignum *, bignum *, bignum *, monty*);
+void(*vecsubmod_ptr)(bignum *, bignum *, bignum *, monty*);
+void(*vecaddsubmod_ptr)(bignum *, bignum *, bignum *, bignum *, monty*);
 
 // ecm stuff
 typedef struct 

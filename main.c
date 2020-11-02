@@ -420,17 +420,19 @@ int main(int argc, char **argv)
         {
             vecmulmod_ptr = &vecmulmod52_mersenne;
             vecsqrmod_ptr = &vecsqrmod52_mersenne;
+            vecaddmod_ptr = &vecaddmod52_mersenne;
+            vecsubmod_ptr = &vecsubmod52_mersenne;
+            vecaddsubmod_ptr = &vec_simul_addsub52_mersenne;
             printf("Using special Mersenne mod for factor of: 2^%d-1\n", montyconst->nbits);
         }
         else
         {
             vecmulmod_ptr = &vecmulmod52;
             vecsqrmod_ptr = &vecsqrmod52;
+            vecaddmod_ptr = &vecaddmod52;
+            vecsubmod_ptr = &vecsubmod52;
+            vecaddsubmod_ptr = &vec_simul_addsub52;
         }
-
-        vecaddmod_ptr = &vecaddmod52;
-        vecsubmod_ptr = &vecsubmod52;
-        vecaddsubmod_ptr = &vec_simul_addsub52;
     }
     else
     {

@@ -1492,24 +1492,18 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			d = (2 * d - e) / 3;
 			e = (e - d) / 2;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt3, &work->pt4); // T = A + B (C)
+            vec_add(mdata, work, &work->pt3, &work->pt4); // T = A + B (C)
 
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt2, &work->pt5); // T2 = T + A (B)
+            vec_add(mdata, work, &work->pt2, &work->pt5); // T2 = T + A (B)
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, mdata);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt1, &work->pt2); // B = B + T (A)
 
@@ -1531,10 +1525,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 2 */
 			d = (d - e) / 2;
 			
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt3, &work->pt2);		// B = A + B (C)
 			vec_duplicate(mdata, work, s1, d1, &work->pt1);		// A = 2A
@@ -1547,10 +1539,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 3 */
 			d -= e;
 			
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = B + A (C)
 			//add3(xT, zT, xB, zB, xA, zA, xC, zC, n, u, v, w); /* T = f(B,A,C) */
@@ -1579,10 +1569,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 4 */
 			d = (d - e) / 2;
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d1, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt3, &work->pt2);		// B = B + A (C)
 			vec_duplicate(mdata, work, s2, d2, &work->pt1);		// A = 2A
@@ -1595,10 +1583,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 5 */
 			d /= 2;
 			
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, mdata);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt2, &work->pt3);		// C = C + A (B)
 			vec_duplicate(mdata, work, s2, d2, &work->pt1);		// A = 2A
@@ -1611,27 +1597,22 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 6 */
 			d = d / 3 - e;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
 
-			vec_duplicate(mdata, work, s1, d1, &work->pt4);		// T = 2A
+            vec_duplicate(mdata, work, s1, d1, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt3, &work->pt5);		// T2 = A + B (C)
-			
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vec_add(mdata, work, &work->pt3, &work->pt5);		// T2 = A + B (C)
 
-			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = T + A (A)
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
-			vecsubmod_ptr(work->pt5.X, work->pt5.Z, d2, mdata);
-			vecaddmod_ptr(work->pt5.X, work->pt5.Z, s2, mdata);
+            vec_add(mdata, work, &work->pt1, &work->pt1);		// A = T + A (A)
 
-			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = T + T2 (C)
+            vecaddsubmod_ptr(work->pt5.X, work->pt5.Z, s2, d2, mdata);
+
+            vec_add(mdata, work, &work->pt3, &work->pt4);		// T = T + T2 (C)
 
 			//duplicate(xT, zT, xA, zA, n, b, u, v, w); /* T = 2*A */
 			//add3(xT2, zT2, xA, zA, xB, zB, xC, zC, n, u, v, w); /* T2 = f(A,B,C) */
@@ -1662,28 +1643,22 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 7 */
 			d = (d - 2 * e) / 3;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
+            vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
 
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d1, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt2, &work->pt2);		// B = T + A (B)
+            vec_add(mdata, work, &work->pt2, &work->pt2);		// B = T + A (B)
 
-			vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
+            vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
+            vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
 
 			//add3(xT, zT, xA, zA, xB, zB, xC, zC, n, u, v, w); /* T = f(A,B,C) */
 			//add3(xB, zB, xT, zT, xA, zA, xB, zB, n, u, v, w); /* B = f(T,A,B) */
@@ -1694,42 +1669,35 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 8 */
 			d = (d - e) / 3;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
+            vec_add(mdata, work, &work->pt3, &work->pt4);		// T = A + B (C)
 
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, mdata);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, mdata);
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt2, &work->pt3);		// C = C + A (B)
+            vec_add(mdata, work, &work->pt2, &work->pt3);		// C = C + A (B)
 
-			//add3(xT, zT, xA, zA, xB, zB, xC, zC, n, u, v, w); /* T = f(A,B,C) */
-			//add3(xC, zC, xC, zC, xA, zA, xB, zB, n, u, v, w); /* C = f(A,C,B) */
-			//mpres_swap(xB, xT, n);
-			//mpres_swap(zB, zT, n); /* swap B and T */
-			sw_x = work->pt2.X->data;
-			sw_z = work->pt2.Z->data;
-			work->pt2.X->data = work->pt4.X->data;
-			work->pt2.Z->data = work->pt4.Z->data;
-			work->pt4.X->data = sw_x;
-			work->pt4.Z->data = sw_z;
+            //add3(xT, zT, xA, zA, xB, zB, xC, zC, n, u, v, w); /* T = f(A,B,C) */
+            //add3(xC, zC, xC, zC, xA, zA, xB, zB, n, u, v, w); /* C = f(A,C,B) */
+            //mpres_swap(xB, xT, n);
+            //mpres_swap(zB, zT, n); /* swap B and T */
+            sw_x = work->pt2.X->data;
+            sw_z = work->pt2.Z->data;
+            work->pt2.X->data = work->pt4.X->data;
+            work->pt2.Z->data = work->pt4.Z->data;
+            work->pt4.X->data = sw_x;
+            work->pt4.Z->data = sw_z;
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d2, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
 
-			vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
+            vec_duplicate(mdata, work, s2, d2, &work->pt4);		// T = 2A
 
-			vecsubmod_ptr(work->pt1.X, work->pt1.Z, d1, mdata);
-			vecaddmod_ptr(work->pt1.X, work->pt1.Z, s1, mdata);
-			vecsubmod_ptr(work->pt4.X, work->pt4.Z, d2, mdata);
-			vecaddmod_ptr(work->pt4.X, work->pt4.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, mdata);
 
-			vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
+            vec_add(mdata, work, &work->pt1, &work->pt1);		// A = A + T (A) = 3A
 
 			//duplicate(xT, zT, xA, zA, n, b, u, v, w);
 			//add3(xA, zA, xA, zA, xT, zT, xA, zA, n, u, v, w); /* A = 3*A */
@@ -1738,10 +1706,8 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 		{ /* condition 9 */
 			e /= 2;
 
-			vecsubmod_ptr(work->pt3.X, work->pt3.Z, d1, mdata);
-			vecaddmod_ptr(work->pt3.X, work->pt3.Z, s1, mdata);
-			vecsubmod_ptr(work->pt2.X, work->pt2.Z, d2, mdata);
-			vecaddmod_ptr(work->pt2.X, work->pt2.Z, s2, mdata);
+            vecaddsubmod_ptr(work->pt3.X, work->pt3.Z, s1, d1, mdata);
+            vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
 
 			vec_add(mdata, work, &work->pt1, &work->pt3);		// C = C + B (A)
 			vec_duplicate(mdata, work, s2, d2, &work->pt2);		// B = 2B
@@ -2304,6 +2270,68 @@ void vececm(thread_data_t *tdata)
 
 			printf("commencing Stage 1 @ prime %lu\n", P_MIN);
             tpool_go(tpool_data);
+
+            //sprintf(fname, "checkpoint.txt");
+            //save = fopen(fname, "a");
+            //if (save != NULL)
+            //{
+            //    for (j = 0; j < threads; j++)
+            //    {
+            //        // GMP-ECM wants X/Z.
+            //        // or, equivalently, X and Z listed separately.
+            //        vecmulmod_ptr(tdata[j].P->X, one, tdata[j].work->tt4, tdata[j].work->n,
+            //            tdata[j].work->tt2, tdata[j].mdata);
+            //
+            //        vecmulmod_ptr(tdata[j].P->Z, one, tdata[j].work->tt3, tdata[j].work->n,
+            //            tdata[j].work->tt2, tdata[j].mdata);
+            //
+            //        for (i = 0; i < VECLEN; i++)
+            //        {
+            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].P->Z, i, NWORDS);
+            //
+            //            if (mpz_cmp_ui(gmpt, 0) == 0)
+            //            {
+            //                printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
+            //            }
+            //
+            //            result = check_factor(gmpt, gmpn, tdata[j].factor);
+            //            if (result == 1)
+            //            {
+            //                FILE* out = fopen("ecm_results.txt", "a");
+            //
+            //                gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
+            //                    tdata[j].factor, j, i);
+            //                printf("%"PRIu64"\n", tdata[j].sigma[i]);
+            //
+            //                if (out != NULL)
+            //                {
+            //                    gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
+            //                        "in thread %d, vec position %d, with sigma = ",
+            //                        tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+            //                    fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
+            //                    fclose(out);
+            //                }
+            //                fflush(stdout);
+            //                found = 1;
+            //            }
+            //
+            //            fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
+            //                tdata[j].sigma[i], STAGE1_MAX);
+            //            gmp_fprintf(save, "N=0x%Zx; ", gmpn);
+            //
+            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
+            //            gmp_fprintf(save, "X=0x%Zx; ", gmpt);
+            //
+            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
+            //            gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
+            //        }
+            //    }
+            //    fclose(save);
+            //}
+            //else
+            //{
+            //    printf("could not open checkpoint.txt for appending, Stage 1 data will not be saved\n");
+            //}
         }
 
         gettimeofday(&stopt, NULL);
@@ -2312,66 +2340,69 @@ void vececm(thread_data_t *tdata)
 	
         sprintf(fname, "save_b1.txt");
         save = fopen(fname, "a");
-        for (j = 0; j < threads; j++)
-        {            
-
-			// GMP-ECM wants X/Z.
-			// or, equivalently, X and Z listed separately.
-			vecmulmod_ptr(tdata[j].P->X, one, tdata[j].work->tt4, tdata[j].work->n,
-				tdata[j].work->tt2, tdata[j].mdata);
-
-			vecmulmod_ptr(tdata[j].P->Z, one, tdata[j].work->tt3, tdata[j].work->n,
-				tdata[j].work->tt2, tdata[j].mdata);
-
-            //print_vechexbignum(tdata[j].P->Z, "Z point\n");
-
-			for (i = 0; i < VECLEN; i++)
+        if (save != NULL)
+        {
+            for (j = 0; j < threads; j++)
             {
-                extract_bignum_from_vec_to_mpz(gmpt, tdata[j].P->Z, i, NWORDS);
+                // GMP-ECM wants X/Z.
+                // or, equivalently, X and Z listed separately.
+                vecmulmod_ptr(tdata[j].P->X, one, tdata[j].work->tt4, tdata[j].work->n,
+                    tdata[j].work->tt2, tdata[j].mdata);
 
-                if (mpz_cmp_ui(gmpt, 0) == 0)
+                vecmulmod_ptr(tdata[j].P->Z, one, tdata[j].work->tt3, tdata[j].work->n,
+                    tdata[j].work->tt2, tdata[j].mdata);
+
+                for (i = 0; i < VECLEN; i++)
                 {
-                    printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
+                    extract_bignum_from_vec_to_mpz(gmpt, tdata[j].P->Z, i, NWORDS);
+
+                    if (mpz_cmp_ui(gmpt, 0) == 0)
+                    {
+                        printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
+                    }
+
+                    result = check_factor(gmpt, gmpn, tdata[j].factor);
+                    if (result == 1)
+                    {
+                        FILE* out = fopen("ecm_results.txt", "a");
+                    
+                        gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
+                            tdata[j].factor, j, i);
+                        printf("%"PRIu64"\n", tdata[j].sigma[i]);
+                    
+                        if (out != NULL)
+                        {
+                            gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
+                                "in thread %d, vec position %d, with sigma = ",
+                                tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+                            fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
+                            fclose(out);
+                        }
+                        fflush(stdout);
+                        found = 1;
+                    }
+
+                    fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
+                        tdata[j].sigma[i], STAGE1_MAX);
+                    gmp_fprintf(save, "N=0x%Zx; ", gmpn);
+
+                    extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
+                    gmp_fprintf(save, "X=0x%Zx; ", gmpt);
+
+                    extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
+                    gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
                 }
-
-                result = check_factor(gmpt, gmpn, tdata[j].factor);
-                if (result == 1)
-                {
-					FILE *out = fopen("ecm_results.txt", "a");
-
-                    gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
-                        tdata[j].factor, j, i);
-                    printf("%"PRIu64"\n", tdata[j].sigma[i]);
-					
-					if (out != NULL)
-					{
-						gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-							"in thread %d, vec position %d, with sigma = ",
-                            tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
-                        fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
-						fclose(out);
-					}
-                    fflush(stdout);
-                    found = 1;
-                }
-
-                fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
-                    tdata[j].sigma[i], STAGE1_MAX);
-                gmp_fprintf(save, "N=0x%Zx; ", gmpn);
-
-				extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
-                gmp_fprintf(save, "X=0x%Zx; ", gmpt);
-
-				extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
-				gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
             }
+            fclose(save);
+        }
+        else
+        {
+            printf("could not open save_b1.txt for appending, Stage 1 data will not be saved\n");
         }
 
         // always stop when a factor is found
 		//if (found)
 		//	break;
-
-		fclose(save);
 
         if (DO_STAGE2)
         {
@@ -2754,7 +2785,7 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 {
 	int i;
 	uint64_t q;
-	uint64_t stg1 = (uint64_t)STAGE1_MAX;
+	uint64_t stg1 = STAGE1_MAX;
 
 	// handle the only even case 
 	q = 2;
@@ -2766,7 +2797,7 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 		q *= 2;
 	}
 
-	for (i = 1; (i < NUM_P) && ((uint32_t)PRIMES[i] < STAGE1_MAX); i++)
+	for (i = 1; (i < NUM_P) && (PRIMES[i] < STAGE1_MAX); i++)
 	{
 		uint64_t c = 1;
 	
@@ -2776,7 +2807,11 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 			c *= q;
 		} while ((c * q) < stg1);
 	
-		if ((verbose == 1) && ((i & 511) == 0))
+#ifdef SKYLAKEX
+        if ((verbose >= 1) && ((i & 8191) == 0))
+#else
+		if ((verbose >= 1) && ((i & 511) == 0))
+#endif
 		{
 			printf("accumulating prime %lu\r", q);
 			fflush(stdout);
@@ -2785,7 +2820,7 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 
 	work->last_pid = i;
 
-	if (verbose == 1)
+	if (verbose >= 1)
 	{
 		printf("\nStage 1 completed at prime %lu with %u point-adds and %u point-doubles\n", 
 			PRIMES[i-1], work->stg1Add, work->stg1Doub);

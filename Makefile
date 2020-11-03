@@ -44,7 +44,6 @@ ifeq ($(COMPILER),mingw)
 # -ffixed prevents them from being used at all.  The code benefits a lot from being
 # able to use all 32 zmm registers.
 	CC = gcc
-	CFLAGS += -fopenmp
     CFLAGS += -fcall-used-xmm16 -fcall-used-xmm17 -fcall-used-xmm18 -fcall-used-xmm19
     CFLAGS += -fcall-used-xmm20 -fcall-used-xmm21 -fcall-used-xmm22 -fcall-used-xmm23
     CFLAGS += -fcall-used-xmm24 -fcall-used-xmm25 -fcall-used-xmm26 -fcall-used-xmm27
@@ -53,19 +52,16 @@ ifeq ($(COMPILER),mingw)
     LIBS = -L/y/projects/factoring/gmp/lib/mingw/x86_64
 else ifeq ($(COMPILER),gcc)
     CC = gcc
-	CFLAGS += -fopenmp 
     INC = -I. -I/projects/gmp-6.0.0a/install/include
     LIBS = -L/projects/gmp-6.0.0a/install/lib
 else ifeq ($(COMPILER),gcc730)
     CC = gcc-7.3.0
-	CFLAGS += -fopenmp 
-    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/include
-    LIBS = -L/sppdg/scratch/buhrow/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp_install/include
+    LIBS = -L/sppdg/scratch/buhrow/projects/gmp_install/install/lib
 else
     CC = icc
-	CFLAGS += -qopenmp
-    INC = -I. -I/projects/gmp-6.0.0a/install/include
-    LIBS = -L/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I/sppdg/scratch/buhrow/projects/gmp_install/include
+    LIBS = -L/sppdg/scratch/buhrow/projects/gmp_install/lib
 endif
 
 ifdef MAXBITS
@@ -94,12 +90,20 @@ else
     endif
 endif
 
+ifeq ($(NO_THREADS),1)
+    CFLAGS += -DNO_THREADS
+else
+    NO_THREADS = 0
+endif
 
 ifeq ($(CC),icc)
 	ifeq ($(KNL),1)
 		CFLAGS += -mkl 
 	else
-		CFLAGS += -L/usr/lib/gcc/x86_64-redhat-linux/4.4.4 -L/lib -mkl
+		CFLAGS += -L/usr/lib/gcc/x86_64-redhat-linux/4.4.4 -L/lib
+        ifeq ($(NO_THREADS),0)
+            CFLAGS += -mkl
+        endif
 	endif
 endif
 
@@ -112,10 +116,10 @@ endif
 CFLAGS += -g $(OPT_FLAGS) $(WARN_FLAGS) $(INC)
 
 ifeq ($(STATIC),1)
-	CFLAGS += -static-intel -static
-	LIBS += -L/usr/lib/x86_64-redhat-linux6E/lib64/ -lm
+	CFLAGS += -static-intel
+	LIBS += -L/usr/lib/x86_64-redhat-linux6E/lib64/ /sppdg/scratch/buhrow/projects/gmp_install/lib/libgmp.a
 else
-	LIBS += -lm -lgmp
+	LIBS += -lm /sppdg/scratch/buhrow/projects/gmp_install/lib/libgmp.a
 endif
 	
 #--------------------------- file lists -------------------------

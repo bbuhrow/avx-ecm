@@ -46,6 +46,8 @@ This file is a snapshot of a work in progress, originated by Mayo
 #include "avx_ecm.h"
 #include <immintrin.h>
 
+void vec_bignum_mask_rshift_n(bignum* u, bignum* v, int n, uint32_t wmask);
+
 // ---------------------------------------------------------------------
 // emulated instructions
 // ---------------------------------------------------------------------
@@ -216,7 +218,7 @@ __inline void _mm512_mul_eo64_epi32(__m512i a, __m512i b, __m512i *e64, __m512i 
 	carry_o = _mm512_mask_add_epi64(carry_o, scarry_o1, hiword2, carry_o);
 
 
-void vecmulmod(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mdata)
+void vecmulmod(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata)
 {
     int i, j, k;
 
@@ -886,10 +888,10 @@ void vecmulmod(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *mda
     return;
 }
 
-void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
+void vecsqrmod(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
 {
     int i, j, k;
-    bignum *b = a;
+    bignum* b = a;
 
     __m512i a0, a1, a2, a3;
     __m512i b0, b1, b2, b3, b4, b5, b6;
@@ -1542,13 +1544,13 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
             a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
             a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
 
-            b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
-            b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
-            b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
-            b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
-            b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
-            b5 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 6) * VECLEN);
-            b6 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 7) * VECLEN);
+            b0 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
+            b1 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
+            b2 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
+            b3 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
+            b4 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
+            b5 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 6) * VECLEN);
+            b6 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 7) * VECLEN);
 
             // save independent sum/carry words for each product-column in the block.
             // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
@@ -1622,11 +1624,11 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
                 a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
                 a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);
 
-                b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
-                b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
-                b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
-                b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
-                b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
+                b0 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN);
+                b1 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);
+                b2 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);
+                b3 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);
+                b4 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
 
                 // save independent sum/carry words for each product-column in the block.
                 // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
@@ -1800,11 +1802,11 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
                 a2 = _mm512_load_epi32(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);		// {d, 9}
                 a3 = _mm512_load_epi32(a->data + (NWORDS - 4 - j * BLOCKWORDS) * VECLEN);		// {c, 8}
 
-                b0 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
-                b1 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
-                b2 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
-                b3 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
-                b4 = _mm512_load_epi32(b->data + (j*BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
+                b0 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 1) * VECLEN); // {9, 5}
+                b1 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 2) * VECLEN);	// {a, 6}
+                b2 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 3) * VECLEN);	// {b, 7}
+                b3 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 4) * VECLEN);	// {c, 8}
+                b4 = _mm512_load_epi32(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN); // {d, 9}
 
                 // save independent sum/carry words for each product-column in the block.
                 // uses 11 register inputs, 16 register outputs, and 3 aux vectors.
@@ -2073,6 +2075,667 @@ void vecsqrmod(bignum *a, bignum *c, bignum *n, bignum *s, monty *mdata)
     }
 
     c->size = NWORDS;
+    return;
+}
+
+void vecmulmod_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata)
+{
+    int i, j, k;
+
+    __m512i a0, a1, a2, a3;
+    __m512i b0, b1, b2, b3, b4, b5, b6;
+    __m512i te0, te1, te2, te3, te4, te5, te6, te7;
+    __m512i to0, to1, to2, to3, to4, to5, to6, to7;
+
+    __m512i acc_e0;
+    __m512i acc_o0;
+
+    __m512i acc_e1;
+    __m512i acc_o1;
+    // 31
+
+    __m512i prod1_e;
+    __m512i prod1_o;
+
+    __m512i hiword = _mm512_set1_epi64(0x000000100000000);
+    __m512i zero = _mm512_set1_epi64(0);
+    // 37
+
+    __mmask8 scarry_e1 = 0;
+    __mmask8 scarry_o1 = 0;
+    __mmask8 scarry_e = 0;
+    __mmask8 scarry_o = 0;
+    __mmask16 scarry2;
+    __mmask16 scarry;
+
+    // zero the accumulator
+    acc_e0 = acc_o0 = acc_e1 = acc_o1 = zero;
+
+
+    // first half mul
+    for (i = 0; i < NBLOCKS; i++)
+    {
+        te0 = te1 = te2 = te3 = te4 = te5 = te6 = te7 = zero;
+        to0 = to1 = to2 = to3 = to4 = to5 = to6 = to7 = zero;
+
+        for (j = i; j > 0; j--)
+        {
+            a0 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 3) * VECLEN);
+            a1 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 2) * VECLEN);
+            a2 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 1) * VECLEN);
+            a3 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 0) * VECLEN);
+
+            b0 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 1) * VECLEN);
+            b1 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 2) * VECLEN);
+            b2 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 3) * VECLEN);
+            b3 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 4) * VECLEN);
+            b4 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 5) * VECLEN);
+            b5 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 6) * VECLEN);
+            b6 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 7) * VECLEN);
+
+
+            //k == 0;
+            _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a3, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            //k == 1;
+            _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a3, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            //k == 2;
+            _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a2, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a3, b5, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            //k == 3;
+            _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a2, b5, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a3, b6, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+        }
+
+        // finish each triangular shaped column sum
+        a0 = _mm512_load_epi32(a->data + (i * BLOCKWORDS + 0) * VECLEN);
+        a1 = _mm512_load_epi32(a->data + (i * BLOCKWORDS + 1) * VECLEN);
+        a2 = _mm512_load_epi32(a->data + (i * BLOCKWORDS + 2) * VECLEN);
+        a3 = _mm512_load_epi32(a->data + (i * BLOCKWORDS + 3) * VECLEN);
+
+        b0 = _mm512_load_epi32(b->data + 0 * VECLEN);
+        b1 = _mm512_load_epi32(b->data + 1 * VECLEN);
+        b2 = _mm512_load_epi32(b->data + 2 * VECLEN);
+        b3 = _mm512_load_epi32(b->data + 3 * VECLEN);
+
+        // ======
+        _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te0, to0, te1, to1);
+
+        // ======
+        _mm512_mul_eo64_epi32(a1, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te2, to2, te3, to3);
+
+        _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te2, to2, te3, to3);
+
+        // ======
+        _mm512_mul_eo64_epi32(a2, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te4, to4, te5, to5);
+
+        _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te4, to4, te5, to5);
+
+        _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te4, to4, te5, to5);
+
+        // ======
+        _mm512_mul_eo64_epi32(a3, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te6, to6, te7, to7);
+
+        _mm512_mul_eo64_epi32(a2, b1, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te6, to6, te7, to7);
+
+        _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te6, to6, te7, to7);
+
+        _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te6, to6, te7, to7);
+
+        // now, do a carry-propagating column summation and store the results.
+        j = 0;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te0, to0);
+        acc_e1 = _mm512_add_epi64(acc_e1, te1);
+        acc_o1 = _mm512_add_epi64(acc_o1, to1);
+
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + (i * BLOCKWORDS + j) * VECLEN, a0);
+
+        // now shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 1;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te2, to2);
+        acc_e1 = _mm512_add_epi64(acc_e1, te3);
+        acc_o1 = _mm512_add_epi64(acc_o1, to3);
+
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + (i * BLOCKWORDS + j) * VECLEN, a0);
+
+        // now shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 2;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te4, to4);
+        acc_e1 = _mm512_add_epi64(acc_e1, te5);
+        acc_o1 = _mm512_add_epi64(acc_o1, to5);
+
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + (i * BLOCKWORDS + j) * VECLEN, a0);
+
+        // now shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 3;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te6, to6);
+        acc_e1 = _mm512_add_epi64(acc_e1, te7);
+        acc_o1 = _mm512_add_epi64(acc_o1, to7);
+
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + (i * BLOCKWORDS + j) * VECLEN, a0);
+
+        // now shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+    }
+
+    // second half mul
+    for (i = NBLOCKS; i < 2 * NBLOCKS; i++)
+    {
+
+        te0 = te1 = te2 = te3 = te4 = te5 = te6 = te7 = zero;
+        to0 = to1 = to2 = to3 = to4 = to5 = to6 = to7 = zero;
+
+        for (j = i - NBLOCKS + 1; j < NBLOCKS; j++)
+        {
+            a0 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 3) * VECLEN);
+            a1 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 2) * VECLEN);
+            a2 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 1) * VECLEN);
+            a3 = _mm512_load_epi32(a->data + ((i - j) * BLOCKWORDS + 0) * VECLEN);
+
+            b0 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 1) * VECLEN);
+            b1 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 2) * VECLEN);
+            b2 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 3) * VECLEN);
+            b3 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 4) * VECLEN);
+            b4 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 5) * VECLEN);
+            b5 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 6) * VECLEN);
+            b6 = _mm512_load_epi32(b->data + ((j - 1) * BLOCKWORDS + 7) * VECLEN);
+
+            // accumulate a * b
+            //k == 0;
+            _mm512_mul_eo64_epi32(a0, b0, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a1, b1, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a2, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            _mm512_mul_eo64_epi32(a3, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te0, to0, te1, to1);
+
+            //k == 1;
+            _mm512_mul_eo64_epi32(a0, b1, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a1, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a2, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            _mm512_mul_eo64_epi32(a3, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te2, to2, te3, to3);
+
+            //k == 2;
+            _mm512_mul_eo64_epi32(a0, b2, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a1, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a2, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            _mm512_mul_eo64_epi32(a3, b5, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te4, to4, te5, to5);
+
+            //k == 3;
+            _mm512_mul_eo64_epi32(a0, b3, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a1, b4, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a2, b5, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+
+            _mm512_mul_eo64_epi32(a3, b6, &prod1_e, &prod1_o);
+            ACCUM_EO_PROD(te6, to6, te7, to7);
+        }
+
+        // finish each triangular shaped column sum (a * b)
+        a1 = _mm512_load_epi32(a->data + ((i - NBLOCKS) * BLOCKWORDS + 1) * VECLEN);
+        a2 = _mm512_load_epi32(a->data + ((i - NBLOCKS) * BLOCKWORDS + 2) * VECLEN);
+        a3 = _mm512_load_epi32(a->data + ((i - NBLOCKS) * BLOCKWORDS + 3) * VECLEN);
+
+        b0 = _mm512_load_epi32(b->data + (NWORDS - 1) * VECLEN);
+        b1 = _mm512_load_epi32(b->data + (NWORDS - 2) * VECLEN);
+        b2 = _mm512_load_epi32(b->data + (NWORDS - 3) * VECLEN);
+
+        // ======
+        _mm512_mul_eo64_epi32(a1, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te0, to0, te1, to1);
+
+        _mm512_mul_eo64_epi32(a2, b1, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te0, to0, te1, to1);
+
+        _mm512_mul_eo64_epi32(a3, b2, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te0, to0, te1, to1);
+
+        // ======
+        _mm512_mul_eo64_epi32(a2, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te2, to2, te3, to3);
+
+        _mm512_mul_eo64_epi32(a3, b1, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te2, to2, te3, to3);
+
+        // ======
+        _mm512_mul_eo64_epi32(a3, b0, &prod1_e, &prod1_o);
+        ACCUM_EO_PROD(te4, to4, te5, to5);
+
+
+        j = 0;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te0, to0);
+        acc_e1 = _mm512_add_epi64(acc_e1, te1);
+        acc_o1 = _mm512_add_epi64(acc_o1, to1);
+
+        // store the low-word final result
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + ((i)* BLOCKWORDS + j) * VECLEN, a0);
+
+        // and shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 1;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te2, to2);
+        acc_e1 = _mm512_add_epi64(acc_e1, te3);
+        acc_o1 = _mm512_add_epi64(acc_o1, to3);
+
+        // store the low-word final result
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + ((i)* BLOCKWORDS + j) * VECLEN, a0);
+
+        // and shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 2;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te4, to4);
+        acc_e1 = _mm512_add_epi64(acc_e1, te5);
+        acc_o1 = _mm512_add_epi64(acc_o1, to5);
+
+        // store the low-word final result
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + ((i)* BLOCKWORDS + j) * VECLEN, a0);
+
+        // and shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+
+        j = 3;
+        // accumulate this column-sum
+        ACCUM_EO_PROD2(acc_e0, acc_o0, acc_e1, acc_o1, te6, to6);
+        acc_e1 = _mm512_add_epi64(acc_e1, te7);
+        acc_o1 = _mm512_add_epi64(acc_o1, to7);
+
+        // store the low-word final result
+        a0 = _mm512_eo64lo_to_epi32(acc_e0, acc_o0);
+        _mm512_store_epi32(s->data + ((i)* BLOCKWORDS + j) * VECLEN, a0);
+
+        // and shift.
+        acc_e0 = _mm512_srli_epi64(acc_e0, 32);
+        acc_o0 = _mm512_srli_epi64(acc_o0, 32);
+        acc_e0 = _mm512_add_epi64(acc_e1, acc_e0);
+        acc_o0 = _mm512_add_epi64(acc_o1, acc_o0);
+        acc_e1 = zero;
+        acc_o1 = zero;
+    }
+
+#ifdef DEBUG_MERSENNE
+    print_vechexbignum(s, "after hi half:");
+#endif
+
+    // reduce by adding hi to lo.  first right shift hi into output.
+    vec_bignum_mask_rshift_n(s, c, mdata->nbits, 0xffff);
+
+    int bshift = mdata->nbits % 32;
+    int wshift = mdata->nbits / 32;
+
+#ifdef DEBUG_MERSENNE
+    print_vechexbignum(c, "hi part:");
+    print_vechexbignum(s, "lo part:");
+#endif
+
+    // now add the low part into the high.
+    scarry = 0;
+    for (i = 0; i < wshift; i++)
+    {
+        a1 = _mm512_load_epi32(c->data + i * VECLEN);
+        b0 = _mm512_load_epi32(s->data + i * VECLEN);
+        a0 = _mm512_adc_epi32(a1, scarry, b0, &scarry);
+        _mm512_store_epi32(c->data + i * VECLEN, a0);
+    }
+
+    a1 = _mm512_load_epi32(c->data + i * VECLEN);
+    b0 = _mm512_load_epi32(s->data + i * VECLEN);
+    b0 = _mm512_and_epi32(_mm512_set1_epi32((1U << (uint32_t)(bshift)) - 1U), b0);
+    a0 = _mm512_adc_epi32(a1, scarry, b0, &scarry);
+    _mm512_store_epi32(c->data + i * VECLEN, a0);
+
+    for (i++; i < NWORDS; i++)
+    {
+        _mm512_store_epi32(s->data + i * VECLEN, _mm512_set1_epi32(0));
+    }
+
+#ifdef DEBUG_MERSENNE
+    print_vechexbignum(c, "after add:");
+#endif
+
+    // if there was a carry, add it back in.
+    a1 = _mm512_load_epi32(c->data + wshift * VECLEN);
+    scarry = _mm512_test_epi32_mask(a1, _mm512_set1_epi32((1 << (uint32_t)bshift)));
+    i = 0;
+    while (scarry > 0)
+    {
+        a1 = _mm512_load_epi32(c->data + i * VECLEN);
+        a0 = _mm512_addcarry_epi32(a1, scarry, &scarry);
+        _mm512_store_epi32(c->data + i * VECLEN, a0);
+        i++;
+    }
+
+    // clear the potential hi-bit
+    a1 = _mm512_load_epi32(c->data + wshift * VECLEN);
+    _mm512_store_epi32(c->data + wshift * VECLEN,
+        _mm512_and_epi32(_mm512_set1_epi32((1 << (uint32_t)(bshift)) - 1), a1));
+
+#ifdef DEBUG_MERSENNE
+    print_vechexbignum(c, "after carry add:");
+    exit(1);
+#endif
+
+    c->size = NWORDS;
+    return;
+}
+
+void vecsqrmod_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
+{
+    vecmulmod_mersenne(a, a, c, n, s, mdata);
+    return;
+}
+
+void vecaddmod_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // a, b, c, and n are aligned
+    // a and b are both positive
+    // n is the montgomery base
+    int i;
+
+    __mmask16 carry = 0;
+    __mmask16 mask = 0;
+    __mmask16 mask2 = 0;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    __m512i nvec;
+    int bshift = mdata->nbits % 32;
+    int wshift = mdata->nbits / 32;
+
+    // add
+    for (i = 0; i < NWORDS; i++)
+    {
+        avec = _mm512_load_epi32(a->data + i * VECLEN);
+        bvec = _mm512_load_epi32(b->data + i * VECLEN);
+        cvec = _mm512_adc_epi32(avec, carry, bvec, &carry);
+        _mm512_store_epi32(c->data + i * VECLEN, cvec);
+    }
+
+    // check for a carry.
+    avec = _mm512_load_epi32(c->data + wshift * VECLEN);
+    carry = _mm512_test_epi32_mask(avec, _mm512_set1_epi32((1 << bshift)));
+
+    // the modulo is just the low part plus 1 (the carry, if present).
+    cvec = _mm512_load_epi32(c->data + 0 * VECLEN);
+    bvec = _mm512_addcarry_epi32(cvec, carry, &carry);
+    _mm512_store_epi32(c->data + 0 * VECLEN, bvec);
+
+    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    {
+        cvec = _mm512_load_epi32(c->data + i * VECLEN);
+        bvec = _mm512_addcarry_epi32(cvec, carry, &carry);
+        _mm512_store_epi32(c->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi32(c->data + wshift * VECLEN);
+    _mm512_store_epi32(c->data + wshift * VECLEN,
+        _mm512_and_epi32(_mm512_set1_epi64((1 << (bshift)) - 1), avec));
+
+    return;
+}
+
+void vecsubmod_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // s1 is of length VECLEN
+    // a, b, c, n, and s1 are aligned
+    // a and b are both positive
+    // a >= b
+    // n is the montgomery base
+    int i;
+
+    __mmask16 carry = 0;
+    __mmask16 mask = 0;
+    __mmask16 mask2 = 0;
+    __m512i nvec;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    int bshift = mdata->nbits % 32;
+    int wshift = mdata->nbits / 32;
+
+    // subtract
+    carry = 0;
+    for (i = 0; i <= wshift; i++)
+    {
+        avec = _mm512_load_epi32(a->data + i * VECLEN);
+        bvec = _mm512_load_epi32(b->data + i * VECLEN);
+        cvec = _mm512_sbb_epi32(avec, carry, bvec, &carry);
+        _mm512_store_epi32(c->data + i * VECLEN, cvec);
+    }
+
+    // if we had a final carry, then b was bigger than a so we need to re-add n.
+    mask = carry;
+    carry = 0;
+    nvec = _mm512_set1_epi32(0xffffffff);
+    __m512i zero = _mm512_set1_epi32(0);
+    for (i = 0; i <= wshift; i++)
+    {
+        cvec = _mm512_load_epi32(c->data + i * VECLEN);
+        bvec = _mm512_mask_adc_epi32(cvec, mask, carry, nvec, &carry);
+        _mm512_store_epi32(c->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi32(c->data + wshift * VECLEN);
+    _mm512_store_epi32(c->data + wshift * VECLEN,
+        _mm512_and_epi32(_mm512_set1_epi64((1 << (bshift)) - 1), avec));
+
+    return;
+}
+
+void vec_simul_addsub_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff,
+    monty* mdata)
+{
+    // assumptions:
+    // a, b, c are of length VECLEN * NWORDS
+    // a, b, c, and n are aligned
+    // a and b are both positive
+    // n is the montgomery base
+    // produce sum = a + b and diff = a - b at the same time which
+    // saves 3N loads (only have to load a,b, and n once)
+    int i;
+
+    __mmask16 carry = 0;
+    __mmask16 borrow = 0;
+    __mmask16 cmask = 0;
+    __mmask16 cmask2 = 0;
+    __mmask16 bmask = 0;
+    __mmask16 bmask2 = 0;
+    __m512i avec;
+    __m512i bvec;
+    __m512i cvec;
+    __m512i nvec;
+    int bshift = mdata->nbits % 32;
+    int wshift = mdata->nbits / 32;
+
+    for (i = 0; i <= wshift; i++)
+    {
+        // add
+        avec = _mm512_load_epi32(a->data + i * VECLEN);
+        bvec = _mm512_load_epi32(b->data + i * VECLEN);
+        cvec = _mm512_adc_epi32(avec, carry, bvec, &carry);
+        _mm512_store_epi32(sum->data + i * VECLEN, cvec);
+
+        // sub
+        cvec = _mm512_sbb_epi32(avec, borrow, bvec, &borrow);
+        _mm512_store_epi32(diff->data + i * VECLEN, cvec);
+    }
+
+    bmask = borrow;     // result too small, need to add n
+
+    // check for a carry.
+    avec = _mm512_load_epi32(sum->data + wshift * VECLEN);
+    carry = _mm512_test_epi32_mask(avec, _mm512_set1_epi32((1 << bshift)));
+
+    // the modulo is just the low part plus 1 (the carry, if present).
+    cvec = _mm512_load_epi32(sum->data + 0 * VECLEN);
+    bvec = _mm512_addcarry_epi32(cvec, carry, &carry);
+    _mm512_store_epi32(sum->data + 0 * VECLEN, bvec);
+
+    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    {
+        cvec = _mm512_load_epi32(sum->data + i * VECLEN);
+        bvec = _mm512_addcarry_epi32(cvec, carry, &carry);
+        _mm512_store_epi32(sum->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi32(sum->data + wshift * VECLEN);
+    _mm512_store_epi32(sum->data + wshift * VECLEN,
+        _mm512_and_epi32(_mm512_set1_epi32((1 << (bshift)) - 1), avec));
+
+    carry = 0;
+    nvec = _mm512_set1_epi32(0xffffffffULL);
+    __m512i zero = _mm512_set1_epi32(0);
+    for (i = 0; i <= wshift; i++)
+    {
+        // conditional add
+        cvec = _mm512_load_epi32(diff->data + i * VECLEN);
+        bvec = _mm512_mask_adc_epi32(cvec, bmask, carry, nvec, &carry);
+        _mm512_store_epi32(diff->data + i * VECLEN, bvec);
+    }
+
+    // clear the potential hi-bit
+    avec = _mm512_load_epi32(diff->data + wshift * VECLEN);
+    _mm512_store_epi32(diff->data + wshift * VECLEN,
+        _mm512_and_epi32(_mm512_set1_epi32((1 << (bshift)) - 1), avec));
+
     return;
 }
 
@@ -2362,6 +3025,31 @@ void vec_bignum_mask_rshift_1(bignum * u, uint32_t wmask)
         nextcarry = _mm512_slli_epi32(_mm512_and_epi32(word, lowmask), 31);
         _mm512_mask_store_epi32(u->data + i * VECLEN, (__mmask16)wmask,
             _mm512_or_epi32(_mm512_srli_epi32(word, 1), carry));
+        carry = nextcarry;
+    }
+
+    return;
+}
+
+void vec_bignum_mask_rshift_n(bignum* u, bignum* v, int n, uint32_t wmask)
+{
+    // return the right shift of bignum u by n bits
+    int i;
+    __m512i nextcarry;
+    __m512i carry = _mm512_set1_epi32(0);
+    __m512i lowmask;
+    __m512i word;
+    int wshift = n / 32;
+    int bshift = n % 32;
+
+    lowmask = _mm512_set1_epi32((1ULL << (uint32_t)bshift) - 1ULL);
+
+    for (i = 2 * NWORDS - 1; (i - wshift) >= 0; i--)
+    {
+        word = _mm512_load_epi32(u->data + i * VECLEN);
+        nextcarry = _mm512_slli_epi32(_mm512_and_epi32(word, lowmask), (DIGITBITS - bshift));
+        _mm512_mask_store_epi64(v->data + (i - wshift) * VECLEN, (__mmask16)wmask,
+            _mm512_or_epi32(_mm512_srli_epi32(word, bshift), carry));
         carry = nextcarry;
     }
 

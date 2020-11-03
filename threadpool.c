@@ -49,6 +49,7 @@ void tpool_start(tpool_t *t)
         (t->tpool_start_fcn)(t);
     }
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     t->run_event = CreateEvent(NULL, FALSE, FALSE, NULL);
     t->finish_event = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -75,6 +76,7 @@ void tpool_start(tpool_t *t)
         pthread_cond_wait(&t->run_cond, &t->run_lock);
     pthread_mutex_unlock(&t->run_lock);
 #endif
+#endif
 }
 
 void tpool_stop(tpool_t *t)
@@ -86,6 +88,7 @@ void tpool_stop(tpool_t *t)
         (t->tpool_stop_fcn)(t);
     }
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     
     SetEvent(t->run_event);
@@ -102,6 +105,7 @@ void tpool_stop(tpool_t *t)
     pthread_cond_destroy(&t->run_cond);
     pthread_mutex_destroy(&t->run_lock);
 #endif
+#endif
 }
 
 
@@ -112,6 +116,7 @@ void *tpool_worker_main(void *thread_data) {
 #endif
     tpool_t *t = (tpool_t *)thread_data;
 
+#ifndef NO_THREADS
     /*
     * Respond to the master thread that we're ready for work. If we had any thread-
     * specific initialization which needed to be done, it would go before this signal.
@@ -124,11 +129,16 @@ void *tpool_worker_main(void *thread_data) {
     t->state = TPOOL_STATE_WAIT;
     pthread_cond_signal(&t->run_cond);
     pthread_mutex_unlock(&t->run_lock);
-    //omp_get_num_procs();
+#endif
 #endif
 
+#ifdef NO_THREADS
+    {
+#else
     while (1) {
+#endif
 
+#ifndef NO_THREADS
         /* wait forever for work to do */
 #if defined(WIN32) || defined(_WIN64)
         WaitForSingleObject(t->run_event, INFINITE);
@@ -138,6 +148,7 @@ void *tpool_worker_main(void *thread_data) {
             pthread_cond_wait(&t->run_cond, &t->run_lock);
         }
 #endif
+#endif
 
         /* do work */
         if (t->state == TPOOL_STATE_WORK)
@@ -146,11 +157,15 @@ void *tpool_worker_main(void *thread_data) {
         }
         else if (t->state == TPOOL_STATE_END)
         {
+#ifndef NO_THREADS
             break;
+#endif
         }
 
         /* signal completion */
         t->state = TPOOL_STATE_WAIT;
+
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
 
         WaitForSingleObject(
@@ -172,6 +187,7 @@ void *tpool_worker_main(void *thread_data) {
         pthread_cond_signal(t->queue_cond);
         pthread_mutex_unlock(t->queue_lock);
 #endif
+#endif
 
     }
 
@@ -191,6 +207,11 @@ void tpool_go(tpool_t *thread_data)
     int *threads_waiting;
     int i;
 
+#ifdef NO_THREADS
+    thread_data->num_threads = 1;
+#endif
+
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     HANDLE queue_lock;
     HANDLE *queue_events = NULL;
@@ -207,11 +228,13 @@ void tpool_go(tpool_t *thread_data)
 #ifdef USE_TPOOL_AFFINITY
     pthread_attr_init(&attr);
 #endif
+#endif
 
     // allocate the queue of threads waiting for work
     thread_queue = (int *)malloc(thread_data->num_threads * sizeof(int));
     threads_waiting = (int *)malloc(sizeof(int));
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     queue_lock = CreateMutex(
         NULL,              // default security attributes
@@ -221,6 +244,7 @@ void tpool_go(tpool_t *thread_data)
 #else
     pthread_mutex_init(&queue_lock, NULL);
     pthread_cond_init(&queue_cond, NULL);
+#endif
 #endif
 
     for (i = 0; i<thread_data->num_threads; i++)
@@ -232,6 +256,7 @@ void tpool_go(tpool_t *thread_data)
         thread_data[i].thread_queue = thread_queue;
         thread_data[i].threads_waiting = threads_waiting;
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
         // assign a pointer to the mutex
         thread_data[i].queue_lock = &queue_lock;
@@ -243,6 +268,7 @@ void tpool_go(tpool_t *thread_data)
 #ifdef USE_TPOOL_AFFINITY
         thread_data[i].attr = &attr;
         thread_data[i].cpus = &cpus;
+#endif
 #endif
 #endif
     }
@@ -257,10 +283,12 @@ void tpool_go(tpool_t *thread_data)
 
     *threads_waiting = thread_data->num_threads;
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     // nothing
 #else
     pthread_mutex_lock(&queue_lock);
+#endif
 #endif
 
     //printf("=== starting threadpool\n");
@@ -270,18 +298,23 @@ void tpool_go(tpool_t *thread_data)
 
         // Process threads until there are no more waiting for their results to be collected
         while (*threads_waiting > 0)
-        {            
+        {           
+
+#ifndef NO_THREADS
             // Pop a waiting thread off the queue (OK, it's stack not a queue)
 #if defined(WIN32) || defined(_WIN64)
             WaitForSingleObject(
                 queue_lock,    // handle to mutex
                 INFINITE);  // no time-out interval
 #endif
+#endif
 
             tid = thread_queue[--(*threads_waiting)];
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
             ReleaseMutex(queue_lock);
+#endif
 #endif
 
             // if not in startup...
@@ -306,7 +339,10 @@ void tpool_go(tpool_t *thread_data)
             if (thread_data[tid].work_fcn_id < thread_data[tid].num_work_fcn)
             {
                 thread_data[tid].state = TPOOL_STATE_WORK;
-                // send the thread a signal to start processing the poly we just generated for it
+
+#ifdef NO_THREADS
+                tpool_worker_main(thread_data);
+#else
 #if defined(WIN32) || defined(_WIN64)
                 SetEvent(thread_data[tid].run_event);
 #else
@@ -314,9 +350,9 @@ void tpool_go(tpool_t *thread_data)
                 pthread_cond_signal(&thread_data[tid].run_cond);
                 pthread_mutex_unlock(&thread_data[tid].run_lock);
 #endif
-
                 // this thread is now busy, so increment the count of working threads
                 threads_working++;
+#endif
             }
 
         } // while (*threads_waiting > 0)
@@ -325,6 +361,7 @@ void tpool_go(tpool_t *thread_data)
         if (threads_working == 0)
             break;
 
+#ifndef NO_THREADS
         // wait for a thread to finish and put itself in the waiting queue
 #if defined(WIN32) || defined(_WIN64)
         WaitForMultipleObjects(
@@ -335,7 +372,7 @@ void tpool_go(tpool_t *thread_data)
 #else
         pthread_cond_wait(&queue_cond, &queue_lock);
 #endif
-        
+#endif
     }
 
     //printf("=== work finished\n");
@@ -367,6 +404,10 @@ tpool_t * tpool_setup(int num_threads, void *start_fcn, void *stop_fcn,
 
     //int numberOfProcessors = sysconf(_SC_NPROCESSORS_ONLN);
     //printf("Number of processors: %d\n", numberOfProcessors);
+
+#ifdef NO_THREADS
+    num_threads = 1;
+#endif
 
     for (i = 0; i < num_threads; i++)
     {

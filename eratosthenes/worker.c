@@ -14,6 +14,7 @@ benefit from your work.
 
 #include "soe.h"
 
+#ifndef NO_THREADS
 
 #ifdef USE_SOE_THREADPOOL
 void start_soe_worker_thread(thread_soedata_t *t) {
@@ -384,3 +385,123 @@ void *soe_worker_thread_main(void *thread_data) {
 }
 
 #endif
+
+#else
+
+void start_soe_worker_thread(thread_soedata_t* t) {
+
+    //create a thread that will process a polynomial     
+    t->command = SOE_COMMAND_INIT;
+}
+
+void stop_soe_worker_thread(thread_soedata_t* t)
+{
+    t->command = SOE_COMMAND_END;
+}
+
+
+#if defined(WIN32) || defined(_WIN64)
+DWORD WINAPI soe_worker_thread_main(LPVOID thread_data) {
+#else
+void* soe_worker_thread_main(void* thread_data) {
+#endif
+    thread_soedata_t* t = (thread_soedata_t*)thread_data;
+
+    uint32_t i;
+
+    /* do work */
+
+    if (t->command == SOE_COMMAND_SIEVE_AND_COUNT)
+    {
+        t->sdata.lines[t->current_line] =
+            (uint8_t*)xmalloc_align(t->sdata.numlinebytes * sizeof(uint8_t));
+        sieve_line(t);
+        t->linecount = count_line(&t->sdata, t->current_line);
+        free(t->sdata.lines[t->current_line]);
+    }
+    else if (t->command == SOE_COMMAND_SIEVE_AND_COMPUTE)
+    {
+        sieve_line(t);
+    }
+    else if (t->command == SOE_COMPUTE_ROOTS)
+    {
+        if (SOE_VFLAG > 2)
+        {
+            printf("starting root computation over %u to %u\n", t->startid, t->stopid);
+        }
+
+        if (t->sdata.sieve_range == 0)
+        {
+            for (i = t->startid; i < t->stopid; i++)
+            {
+                uint32_t inv;
+                uint32_t prime = t->sdata.sieve_p[i];
+
+                // slightly optimized modinv when prime >> prodN
+                inv = modinv_1c(t->sdata.prodN, prime);
+                t->sdata.root[i] = prime - inv;
+
+                //t->sdata.lower_mod_prime[i - t->sdata.bucket_start_id] = 
+                t->sdata.lower_mod_prime[i] =
+                    (t->sdata.lowlimit + 1) % prime;
+            }
+        }
+        else
+        {
+            mpz_t tmpz;
+            mpz_init(tmpz);
+
+            mpz_add_ui(tmpz, *t->sdata.offset, t->sdata.lowlimit + 1);
+            for (i = t->startid; i < t->stopid; i++)
+            {
+                uint32_t inv;
+                uint32_t prime = t->sdata.sieve_p[i];
+
+                // slightly optimized modinv when prime >> prodN
+                inv = modinv_1c(t->sdata.prodN, prime);
+                t->sdata.root[i] = prime - inv;
+
+                //t->sdata.lower_mod_prime[i - t->sdata.bucket_start_id] = 
+                t->sdata.lower_mod_prime[i] =
+                    mpz_tdiv_ui(tmpz, prime);
+            }
+        }
+
+    }
+    else if (t->command == SOE_COMPUTE_PRIMES)
+    {
+        t->linecount = 0;
+
+        for (i = t->startid; i < t->stopid; i += 8)
+        {
+            t->linecount = compute_8_bytes(&t->sdata, t->linecount, t->ddata.primes, i);
+        }
+    }
+    else if (t->command == SOE_COMPUTE_PRPS)
+    {
+        t->linecount = 0;
+        for (i = t->startid; i < t->stopid; i++)
+        {
+            mpz_add_ui(t->tmpz, t->offset, t->ddata.primes[i - t->startid]);
+            if ((mpz_cmp(t->tmpz, t->lowlimit) >= 0) && (mpz_cmp(t->highlimit, t->tmpz) >= 0))
+            {
+                //if (is_mpz_prp(t->tmpz))
+                if (mpz_probab_prime_p(t->tmpz, 1))
+                    t->ddata.primes[t->linecount++] = t->ddata.primes[i - t->startid];
+            }
+        }
+    }
+
+    /* signal completion */
+
+    t->command = SOE_COMMAND_WAIT;
+
+#if defined(WIN32) || defined(_WIN64)
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+#endif
+

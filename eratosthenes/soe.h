@@ -25,7 +25,9 @@ code to the public domain.
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
+#ifndef NO_THREADS
 #include <pthread.h>
+#endif
 #include "gmp.h"
 #include "util.h"
 #include <math.h>
@@ -39,7 +41,9 @@ code to the public domain.
 #include <process.h>
 #endif
 
+#ifndef NO_THREADS
 #define USE_SOE_THREADPOOL
+#endif
 
 #ifdef _MSC_VER
 // optionally define this or not depending on whether your hardware supports it.
@@ -206,6 +210,7 @@ typedef struct {
 	/* fields for thread pool synchronization */
 	volatile enum soe_command command;
 
+#ifndef NO_THREADS
 #ifdef USE_SOE_THREADPOOL
     /* fields for thread pool synchronization */
     volatile int *thread_queue, *threads_waiting;
@@ -237,6 +242,7 @@ typedef struct {
     pthread_t thread_id;
     pthread_mutex_t run_lock;
     pthread_cond_t run_cond;
+#endif
 #endif
 
 #endif

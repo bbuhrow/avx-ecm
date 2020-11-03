@@ -140,7 +140,7 @@ int main(int argc, char **argv)
 	uint32_t *siglist;
 	uint32_t numcurves;
 	uint32_t numcurves_per_thread;
-	uint32_t b1;
+	uint64_t b1;
 	uint32_t i, j;
 	char **nextptr;
 	monty *montyconst;
@@ -204,29 +204,9 @@ int main(int argc, char **argv)
     }
 		
 	numcurves = strtoul(argv[2], NULL, 10);
-	b1 = strtoul(argv[3], NULL, 10);	
+	b1 = strtoull(argv[3], NULL, 10);	
 	STAGE1_MAX = b1;
-	STAGE2_MAX = 100ULL * (uint64_t)b1;
-
-    //if (DIGITBITS == 52)
-    //{
-    //    MAXBITS = 208;
-    //    while (MAXBITS <= size_n)
-    //    {
-    //        MAXBITS += 208;
-    //    }
-    //}
-    //else
-    //{
-    //    MAXBITS = 128;
-    //    while (MAXBITS <= size_n)
-    //    {
-    //        MAXBITS += 128;
-    //    }
-    //}
-    //
-    //NWORDS = MAXBITS / DIGITBITS;
-    //NBLOCKS = NWORDS / BLOCKWORDS;
+	STAGE2_MAX = 100ULL * b1;
 	
 	// compute NBLOCKS if using the actual size of the input (non-Mersenne)
     if (DIGITBITS == 52)
@@ -294,7 +274,7 @@ int main(int argc, char **argv)
 	threads = SOE_THREADS = 1;
 	if (argc >= 5)
         threads = atoi(argv[4]);
-    SOE_THREADS = 2;
+    //SOE_THREADS = 2;
 
     DO_STAGE2 = 1;
     if (argc == 6)
@@ -347,9 +327,6 @@ int main(int argc, char **argv)
 
 	if (isMersenne)
     {
-        // TBD: may want to check if the input number is small
-        // enough compared to the base Mersenne that normal Montgomery
-        // arithmetic would be faster.
         montyconst->isMersenne = 1;
         montyconst->nbits = size_n;
         mpz_set(montyconst->nhat, gmpn);           // remember input N
@@ -361,15 +338,11 @@ int main(int argc, char **argv)
 
         mpz_set_ui(r, 1);
         mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-        //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
-        //mpz_invert(montyconst->nhat, N, r);
-        //mpz_sub(montyconst->nhat, r, montyconst->nhat);
         mpz_invert(montyconst->rhat, r, gmpn);
         broadcast_mpz_to_vec(montyconst->n, gmpn);
         broadcast_mpz_to_vec(montyconst->r, r);
         broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
         broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
-        //mpz_tdiv_r(r, r, N);
         mpz_set_ui(r, 1);
         broadcast_mpz_to_vec(montyconst->one, r);
     }
@@ -379,7 +352,6 @@ int main(int argc, char **argv)
         montyconst->nbits = mpz_sizeinbase(gmpn, 2);
         mpz_set_ui(r, 1);
         mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-        //gmp_printf("r = (1 << %d) = %Zd\n", DIGITBITS * NWORDS, r);
         mpz_invert(montyconst->nhat, gmpn, r);
         mpz_sub(montyconst->nhat, r, montyconst->nhat);
         mpz_invert(montyconst->rhat, r, gmpn);
@@ -390,24 +362,6 @@ int main(int argc, char **argv)
         mpz_tdiv_r(r, r, gmpn);
         broadcast_mpz_to_vec(montyconst->one, r);
     }
-	
-    //mpz_set_ui(r, 1);
-    //mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-    ////gmp_printf("r = %Zd\n", r);
-    //mpz_invert(montyconst->nhat, gmpn, r);
-    //mpz_sub(montyconst->nhat, r, montyconst->nhat);
-    //mpz_invert(montyconst->rhat, r, gmpn);
-    //broadcast_mpz_to_vec(montyconst->n, gmpn);
-    //broadcast_mpz_to_vec(montyconst->r, r);
-    //broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
-    //broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
-    //mpz_tdiv_r(r, r, gmpn);
-    //broadcast_mpz_to_vec(montyconst->one, r);
-    //gmp_printf("n = %Zx\n", gmpn);
-    //gmp_printf("rhat = %Zx\n", montyconst->rhat);
-    //gmp_printf("nhat = %Zx\n", montyconst->nhat);
-    //gmp_printf("one = %Zx\n", r);
-    //printf("rho = %016llx\n", mpz_get_ui(montyconst->nhat) & MAXDIGIT);
 	
     for (i = 0; i < VECLEN; i++)
     {
@@ -436,11 +390,25 @@ int main(int argc, char **argv)
     }
     else
     {
-        vecmulmod_ptr = &vecmulmod;
-        vecsqrmod_ptr = &vecsqrmod;
-        vecaddmod_ptr = &vecaddmod;
-        vecsubmod_ptr = &vecsubmod;
-        vecaddsubmod_ptr = &vec_simul_addsub;
+        if (montyconst->isMersenne)
+        {
+            vecmulmod_ptr = &vecmulmod_mersenne;
+            vecsqrmod_ptr = &vecsqrmod_mersenne;
+            vecaddmod_ptr = &vecaddmod_mersenne;
+            vecsubmod_ptr = &vecsubmod_mersenne;
+            vecaddsubmod_ptr = &vec_simul_addsub_mersenne;
+            printf("Using special Mersenne mod for factor of: 2^%d-1\n", montyconst->nbits);
+        }
+        else
+        {
+            vecmulmod_ptr = &vecmulmod;
+            vecsqrmod_ptr = &vecsqrmod;
+            vecaddmod_ptr = &vecaddmod;
+            vecsubmod_ptr = &vecsubmod;
+            vecaddsubmod_ptr = &vec_simul_addsub;
+        }
+
+        
     }
 
 	gettimeofday(&stopt, NULL);

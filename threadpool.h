@@ -29,7 +29,6 @@ either expressed or implied, of the FreeBSD Project.
 
 #include <stdlib.h>
 #include <malloc.h>
-//#include <omp.h>
 
 //#define USE_TPOOL_AFFINITY
 
@@ -39,6 +38,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <unistd.h>
 #endif
 
+#ifndef NO_THREADS
 #if defined(WIN32)
 
 #include <windows.h>
@@ -49,7 +49,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <pthread.h>
 
 #endif /* WIN32 */
-
+#endif
 
 
 enum tpool_state {
@@ -87,6 +87,7 @@ typedef struct
     volatile int *thread_queue;
     volatile int *threads_waiting;
 
+#ifndef NO_THREADS
 #if defined(WIN32) || defined(_WIN64)
     HANDLE thread_id;
     HANDLE run_event;
@@ -108,6 +109,7 @@ typedef struct
     cpu_set_t *cpus;
 #endif
 
+#endif
 #endif
 
 } tpool_t;

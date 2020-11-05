@@ -105,6 +105,14 @@ __m512i __inline _mm512_addcarry_epi52(__m512i a, __mmask8 c, __mmask8* cout)
     return t;
 }
 
+__m512i __inline _mm512_subborrow_epi52(__m512i a, __mmask8 c, __mmask8* cout)
+{
+    __m512i t = _mm512_sub_epi64(a, _mm512_maskz_set1_epi64(c, 1));
+    *cout = _mm512_cmpeq_epu64_mask(a, _mm512_set1_epi64(0));
+    t = _mm512_and_epi64(t, _mm512_set1_epi64(0xfffffffffffffULL));
+    return t;
+}
+
 __m512i __inline _mm512_sbb_epi52(__m512i a, __mmask8 c, __m512i b, __mmask8* cout)
 {
     __m512i t = _mm512_sub_epi64(a, b);
@@ -706,62 +714,113 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
     print_vechexbignum(s, "lo part:");
 #endif
 
-    // now add the low part into the high.
-    scarry = 0;
-    for (i = 0; i < wshift; i++)
+    if (mdata->isMersenne > 0)
     {
+        // now add the low part into the high.
+        scarry = 0;
+        for (i = 0; i < wshift; i++)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            b0 = _mm512_load_epi64(s->data + i * VECLEN);
+            a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+        }
+
         a1 = _mm512_load_epi64(c->data + i * VECLEN);
         b0 = _mm512_load_epi64(s->data + i * VECLEN);
+        b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
         a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
         _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-    }
 
-    a1 = _mm512_load_epi64(c->data + i * VECLEN);
-    b0 = _mm512_load_epi64(s->data + i * VECLEN);
-    b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
-    a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
-    _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-
-    for (i++; i < NWORDS; i++)
-    {
-        _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
-    }
+        for (i++; i < NWORDS; i++)
+        {
+            _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
+        }
 
 #ifdef DEBUG_MERSENNE
-    print_vechexbignum(c, "after add:");
+        print_vechexbignum(c, "after add:");
 #endif
 
-    // if there was a carry, add it back in.
-    a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
-    scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
-    i = 0;
-    while (scarry > 0)
+        // if there was a carry, add it back in.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+        i = 0;
+        while (scarry > 0)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+            i++;
+        }
+
+        // clear the potential hi-bit
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        _mm512_store_epi64(c->data + wshift * VECLEN,
+            _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+
+#ifdef DEBUG_MERSENNE
+        print_vechexbignum(c, "after carry add:");
+        exit(1);
+#endif
+    }
+    else
     {
+        // now subtract the hi part from the lo
+        scarry = 0;
+        for (i = 0; i < wshift; i++)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);   // hi
+            b0 = _mm512_load_epi64(s->data + i * VECLEN);   // lo
+            a0 = _mm512_sbb_epi52(b0, scarry, a1, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+        }
+
         a1 = _mm512_load_epi64(c->data + i * VECLEN);
-        a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+        b0 = _mm512_load_epi64(s->data + i * VECLEN);
+        b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
+        a0 = _mm512_sbb_epi52(b0, scarry, a1, &scarry);
         _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-        i++;
-    }
 
-    // clear the potential hi-bit
-    a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
-    _mm512_store_epi64(c->data + wshift * VECLEN,
-        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+        for (i++; i < NWORDS; i++)
+        {
+            _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
+        }
 
 #ifdef DEBUG_MERSENNE
-    print_vechexbignum(c, "after carry add:");
-    exit(1);
+        print_vechexbignum(c, "after add:");
 #endif
+
+        // if there was a carry, add 1.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+        i = 0;
+        while (scarry > 0)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+            i++;
+        }
+
+        // and add one to the hi-bit.  This should resolve the borrow bit.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        //a1 = _mm512_add_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift))), a1);
+        //_mm512_store_epi64(c->data + wshift * VECLEN,
+        //    _mm512_and_epi64(_mm512_set1_epi64(0xfffffffffffffULL), a1));
+
+#ifdef DEBUG_MERSENNE
+        print_vechexbignum(c, "after carry add:");
+#endif
+
+        _mm512_store_epi64(c->data + wshift * VECLEN,
+            _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+    }
 
     c->size = NWORDS;
     return;
 }
 
-void vecsqrmod52_mersenne_easy(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
-{
-    vecmulmod52_mersenne(a, a, c, n, s, mdata);
-    return;
-}
+//#define DEBUG_MERSENNE
 
 void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
 {
@@ -1823,52 +1882,114 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
     print_vechexbignum(s, "lo part:");
 #endif
 
-    // now add the low part into the high.
-    scarry = 0;
-    for (i = 0; i < wshift; i++)
+    if (mdata->isMersenne > 0)
     {
+        // now add the low part into the high.
+        scarry = 0;
+        for (i = 0; i < wshift; i++)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            b0 = _mm512_load_epi64(s->data + i * VECLEN);
+            a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+        }
+
         a1 = _mm512_load_epi64(c->data + i * VECLEN);
         b0 = _mm512_load_epi64(s->data + i * VECLEN);
+        b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
         a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
         _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-    }
 
-    a1 = _mm512_load_epi64(c->data + i * VECLEN);
-    b0 = _mm512_load_epi64(s->data + i * VECLEN);
-    b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
-    a0 = _mm512_adc_epi52(a1, scarry, b0, &scarry);
-    _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-
-    for (i++; i < NWORDS; i++)
-    {
-        _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
-    }
+        for (i++; i < NWORDS; i++)
+        {
+            _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
+        }
 
 #ifdef DEBUG_MERSENNE
-    print_vechexbignum(c, "after add:");
+        print_vechexbignum(c, "after add:");
 #endif
 
-    // if there was a carry, add it back in.
-    a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
-    scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
-    i = 0;
-    while (scarry > 0)
+        // if there was a carry, add it back in.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+        i = 0;
+        while (scarry > 0)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+            i++;
+        }
+
+        // clear the potential hi-bit
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        _mm512_store_epi64(c->data + wshift * VECLEN,
+            _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+
+#ifdef DEBUG_MERSENNE
+        print_vechexbignum(c, "after carry add:");
+        exit(1);
+#endif
+    }
+    else
     {
+        // now subtract the hi part from the lo
+        scarry = 0;
+        for (i = 0; i < wshift; i++)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);   // hi
+            b0 = _mm512_load_epi64(s->data + i * VECLEN);   // lo
+            a0 = _mm512_sbb_epi52(b0, scarry, a1, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+        }
+
         a1 = _mm512_load_epi64(c->data + i * VECLEN);
-        a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+        b0 = _mm512_load_epi64(s->data + i * VECLEN);
+        b0 = _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), b0);
+        a0 = _mm512_sbb_epi52(b0, scarry, a1, &scarry);
         _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
-        i++;
-    }
 
-    // clear the potential hi-bit
-    a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
-    _mm512_store_epi64(c->data + wshift * VECLEN,
-        _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+        // zero any remaining lo words.
+        for (i++; i < NWORDS; i++)
+        {
+            _mm512_store_epi64(s->data + i * VECLEN, _mm512_set1_epi64(0));
+        }
 
 #ifdef DEBUG_MERSENNE
-    print_vechexbignum(c, "after carry add:");
-    exit(1);
+        print_vechexbignum(c, "after sub:");
 #endif
+
+        // if there was a carry, add 1 to the lo bit.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        scarry = _mm512_test_epi64_mask(a1, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
+        i = 0;
+        while (scarry > 0)
+        {
+            a1 = _mm512_load_epi64(c->data + i * VECLEN);
+            a0 = _mm512_addcarry_epi52(a1, scarry, &scarry);
+            _mm512_store_epi64(c->data + i * VECLEN, _mm512_and_epi64(vlmask, a0));
+            i++;
+        }
+
+        // and add one to the hi-bit.  This should resolve the borrow bit.
+        a1 = _mm512_load_epi64(c->data + wshift * VECLEN);
+        //a1 = _mm512_add_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift))), a1);
+        //_mm512_store_epi64(c->data + wshift * VECLEN,
+        //    _mm512_and_epi64(_mm512_set1_epi64(0xfffffffffffffULL), a1));
+
+#ifdef DEBUG_MERSENNE
+        print_vechexbignum(c, "after carry add:");
+#endif
+
+        _mm512_store_epi64(c->data + wshift * VECLEN,
+            _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), a1));
+
+#ifdef DEBUG_MERSENNE
+        print_vechexbignum(c, "after bit clear:");
+        exit(1);
+#endif
+
+    }
 
     c->size = NWORDS;
     return;
@@ -4045,16 +4166,33 @@ void vecaddmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
     avec = _mm512_load_epi64(c->data + wshift * VECLEN);
     carry = _mm512_test_epi64_mask(avec, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
 
-    // the modulo is just the low part plus 1 (the carry, if present).
-    cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
-    bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
-    _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
-
-    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    if (mdata->isMersenne > 0)
     {
-        cvec = _mm512_load_epi64(c->data + i * VECLEN);
+        // the modulo is just the low part plus 1 (the carry, if present).
+        cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
         bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
-        _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
+
+        for (i = 1; (i < NWORDS) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(c->data + i * VECLEN);
+            bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        }
+    }
+    else
+    {
+        // the modulo is just the low part minus 1 (the carry, if present).
+        cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
+        bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
+        _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
+
+        for (i = 1; (i < NWORDS) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(c->data + i * VECLEN);
+            bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        }
     }
 
     // clear the potential hi-bit
@@ -4139,16 +4277,34 @@ void vecsubmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
         _mm512_store_epi64(c->data + i * VECLEN, cvec);
     }
 
-    // if we had a final carry, then b was bigger than a so we need to re-add n.
-    mask = carry;
-    carry = 0;
-    nvec = _mm512_set1_epi64(0xfffffffffffffULL);
-    __m512i zero = _mm512_set1_epi64(0);
-    for (i = 0; i <= wshift; i++)
+    if (mdata->isMersenne > 0)
     {
-        cvec = _mm512_load_epi64(c->data + i * VECLEN);
+        // if we had a final carry, then b was bigger than a so we need to re-add n.
+        mask = carry;
+        carry = 0;
+        nvec = _mm512_set1_epi64(0xfffffffffffffULL);
+        for (i = 0; i <= wshift; i++)
+        {
+            cvec = _mm512_load_epi64(c->data + i * VECLEN);
+            bvec = _mm512_mask_adc_epi52(cvec, mask, carry, nvec, &carry);
+            _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        }
+    }
+    else
+    {
+        // if we had a final carry, then b was bigger than a so we need to re-add n.
+        mask = carry;
+        carry = 0;
+        nvec = _mm512_set1_epi64(1);
+        cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
         bvec = _mm512_mask_adc_epi52(cvec, mask, carry, nvec, &carry);
-        _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
+        for (i = 1; (i <= wshift) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(c->data + i * VECLEN);
+            bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(c->data + i * VECLEN, bvec);
+        }
     }
 
     //for (; i < NWORDS; i++)
@@ -4377,16 +4533,33 @@ void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff
     avec = _mm512_load_epi64(sum->data + wshift * VECLEN);
     carry = _mm512_test_epi64_mask(avec, _mm512_set1_epi64((1ULL << (uint64_t)bshift)));
 
-    // the modulo is just the low part plus 1 (the carry, if present).
-    cvec = _mm512_load_epi64(sum->data + 0 * VECLEN);
-    bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
-    _mm512_store_epi64(sum->data + 0 * VECLEN, bvec);
-
-    for (i = 1; (i < NWORDS) && (carry > 0); i++)
+    if (mdata->isMersenne > 0)
     {
-        cvec = _mm512_load_epi64(sum->data + i * VECLEN);
+        // the modulo is just the low part plus 1 (the carry, if present).
+        cvec = _mm512_load_epi64(sum->data + 0 * VECLEN);
         bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
-        _mm512_store_epi64(sum->data + i * VECLEN, bvec);
+        _mm512_store_epi64(sum->data + 0 * VECLEN, bvec);
+
+        for (i = 1; (i < NWORDS) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(sum->data + i * VECLEN);
+            bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(sum->data + i * VECLEN, bvec);
+        }
+    }
+    else
+    {
+        // the modulo is just the low part minus 1 (the carry, if present).
+        cvec = _mm512_load_epi64(sum->data + 0 * VECLEN);
+        bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
+        _mm512_store_epi64(sum->data + 0 * VECLEN, bvec);
+
+        for (i = 1; (i < NWORDS) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(sum->data + i * VECLEN);
+            bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(sum->data + i * VECLEN, bvec);
+        }
     }
 
     // clear the potential hi-bit
@@ -4394,15 +4567,32 @@ void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff
     _mm512_store_epi64(sum->data + wshift * VECLEN,
         _mm512_and_epi64(_mm512_set1_epi64((1ULL << (uint64_t)(bshift)) - 1ULL), avec));
 
-    carry = 0;
-    nvec = _mm512_set1_epi64(0xfffffffffffffULL);
-    __m512i zero = _mm512_set1_epi64(0);
-    for (i = 0; i <= wshift; i++)
+    if (mdata->isMersenne > 0)
     {
-        // conditional add
-        cvec = _mm512_load_epi64(diff->data + i * VECLEN);
+        // if we had a final carry, then b was bigger than a so we need to re-add n.
+        carry = 0;
+        nvec = _mm512_set1_epi64(0xfffffffffffffULL);
+        for (i = 0; i <= wshift; i++)
+        {
+            cvec = _mm512_load_epi64(diff->data + i * VECLEN);
+            bvec = _mm512_mask_adc_epi52(cvec, bmask, carry, nvec, &carry);
+            _mm512_store_epi64(diff->data + i * VECLEN, bvec);
+        }
+    }
+    else
+    {
+        // if we had a final carry, then b was bigger than a so we need to re-add n.
+        carry = 0;
+        nvec = _mm512_set1_epi64(1);
+        cvec = _mm512_load_epi64(diff->data + 0 * VECLEN);
         bvec = _mm512_mask_adc_epi52(cvec, bmask, carry, nvec, &carry);
-        _mm512_store_epi64(diff->data + i * VECLEN, bvec);
+        _mm512_store_epi64(diff->data + 0 * VECLEN, bvec);
+        for (i = 1; (i <= wshift) && (carry > 0); i++)
+        {
+            cvec = _mm512_load_epi64(diff->data + i * VECLEN);
+            bvec = _mm512_addcarry_epi52(cvec, carry, &carry);
+            _mm512_store_epi64(diff->data + i * VECLEN, bvec);
+        }
     }
 
     //for (; i < NWORDS; i++)

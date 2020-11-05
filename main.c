@@ -189,7 +189,7 @@ int main(int argc, char **argv)
 	// check for Mersenne inputs
     size_n = mpz_sizeinbase(gmpn, 2);
 
-    for (i = size_n; i < 2048; i++)
+    for (i = size_n - 1; i < 2048; i++)
     {
         mpz_set_ui(r, 1);
         mpz_mul_2exp(r, r, i);
@@ -199,6 +199,17 @@ int main(int argc, char **argv)
         {
             size_n = i;
             isMersenne = 1;
+            break;
+        }
+
+        mpz_set_ui(r, 1);
+        mpz_mul_2exp(r, r, i);
+        mpz_add_ui(r, r, 1);
+        mpz_mod(g, r, gmpn);
+        if (mpz_cmp_ui(g, 0) == 0)
+        {
+            size_n = i;
+            isMersenne = -1;
             break;
         }
     }
@@ -327,21 +338,21 @@ int main(int argc, char **argv)
 
 	if (isMersenne)
     {
-        montyconst->isMersenne = 1;
+        montyconst->isMersenne = isMersenne;
         montyconst->nbits = size_n;
         mpz_set(montyconst->nhat, gmpn);           // remember input N
         // do all math w.r.t the Mersenne number
         mpz_set_ui(gmpn, 1);
         mpz_mul_2exp(gmpn, gmpn, size_n);
-        mpz_sub_ui(gmpn, gmpn, 1);
+        if (isMersenne > 0)
+        {
+            mpz_sub_ui(gmpn, gmpn, 1);
+        }
+        else
+        {
+            mpz_add_ui(gmpn, gmpn, 1);
+        }
         broadcast_mpz_to_vec(montyconst->n, gmpn);
-
-        mpz_set_ui(r, 1);
-        mpz_mul_2exp(r, r, DIGITBITS * NWORDS);
-        mpz_invert(montyconst->rhat, r, gmpn);
-        broadcast_mpz_to_vec(montyconst->n, gmpn);
-        broadcast_mpz_to_vec(montyconst->r, r);
-        broadcast_mpz_to_vec(montyconst->vrhat, montyconst->rhat);
         broadcast_mpz_to_vec(montyconst->vnhat, montyconst->nhat);
         mpz_set_ui(r, 1);
         broadcast_mpz_to_vec(montyconst->one, r);
@@ -370,7 +381,7 @@ int main(int argc, char **argv)
     
     if (DIGITBITS == 52)
     {
-		if (montyconst->isMersenne)
+		if (montyconst->isMersenne > 0)
         {
             vecmulmod_ptr = &vecmulmod52_mersenne;
             vecsqrmod_ptr = &vecsqrmod52_mersenne;
@@ -378,6 +389,15 @@ int main(int argc, char **argv)
             vecsubmod_ptr = &vecsubmod52_mersenne;
             vecaddsubmod_ptr = &vec_simul_addsub52_mersenne;
             printf("Using special Mersenne mod for factor of: 2^%d-1\n", montyconst->nbits);
+        }
+        else if (montyconst->isMersenne < 0)
+        {
+            vecmulmod_ptr = &vecmulmod52_mersenne;
+            vecsqrmod_ptr = &vecsqrmod52_mersenne;
+            vecaddmod_ptr = &vecaddmod52_mersenne;
+            vecsubmod_ptr = &vecsubmod52_mersenne;
+            vecaddsubmod_ptr = &vec_simul_addsub52_mersenne;
+            printf("Using special Mersenne mod for factor of: 2^%d+1\n", montyconst->nbits);
         }
         else
         {

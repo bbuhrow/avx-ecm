@@ -212,6 +212,17 @@ int main(int argc, char **argv)
             isMersenne = -1;
             break;
         }
+
+        // detect pseudo-Mersennes
+        mpz_set_ui(r, 1);
+        mpz_mul_2exp(r, r, i);
+        mpz_mod(g, r, gmpn);
+        if (mpz_sizeinbase(g, 2) < DIGITBITS)
+        {
+            size_n = i;
+            isMersenne = mpz_get_ui(g);
+            break;
+        }
     }
 		
 	numcurves = strtoul(argv[2], NULL, 10);
@@ -346,7 +357,7 @@ int main(int argc, char **argv)
         mpz_mul_2exp(gmpn, gmpn, size_n);
         if (isMersenne > 0)
         {
-            mpz_sub_ui(gmpn, gmpn, 1);
+            mpz_sub_ui(gmpn, gmpn, isMersenne);
         }
         else
         {
@@ -381,7 +392,17 @@ int main(int argc, char **argv)
     
     if (DIGITBITS == 52)
     {
-		if (montyconst->isMersenne > 0)
+        if (montyconst->isMersenne > 1)
+        {
+            vecmulmod_ptr = &vecmulmod52_mersenne;
+            vecsqrmod_ptr = &vecsqrmod52_mersenne;
+            vecaddmod_ptr = &vecaddmod52_mersenne;
+            vecsubmod_ptr = &vecsubmod52_mersenne;
+            vecaddsubmod_ptr = &vec_simul_addsub52_mersenne;
+            printf("Using special pseudo-Mersenne mod for factor of: 2^%d-%d\n", 
+                montyconst->nbits, montyconst->isMersenne);
+        }
+		else if (montyconst->isMersenne > 0)
         {
             vecmulmod_ptr = &vecmulmod52_mersenne;
             vecsqrmod_ptr = &vecsqrmod52_mersenne;

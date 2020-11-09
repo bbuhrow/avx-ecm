@@ -2177,13 +2177,13 @@ void vececm(thread_data_t *tdata)
     // in this function, gmpn is only used to for screen output and to 
     // check factors.  So if this is a Mersenne input, use the original
     // input number.  (all math is still done relative to the base Mersenne.)
-    if (tdata[0].mdata->isMersenne)
+    if (tdata[0].mdata->isMersenne == 0)
     {
-        extract_bignum_from_vec_to_mpz(gmpn, tdata[0].mdata->vnhat, 0, NWORDS);
+        extract_bignum_from_vec_to_mpz(gmpn, tdata[0].mdata->n, 0, NWORDS);
     }
     else
     {
-        extract_bignum_from_vec_to_mpz(gmpn, tdata[0].mdata->n, 0, NWORDS);
+        extract_bignum_from_vec_to_mpz(gmpn, tdata[0].mdata->vnhat, 0, NWORDS);
     }
 
 	for (i = 0; i < VECLEN; i++)
@@ -2738,7 +2738,7 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
         mpz_mul(X, X, t1);
         mpz_set_ui(Z, 1);
 
-        if (!mdata->isMersenne)
+        if (mdata->isMersenne == 0)
         {
             // into Monty rep
             mpz_mul_2exp(X, X, DIGITBITS * NWORDS);

@@ -131,6 +131,219 @@ void insert_mpz_to_vec(bignum *vec_dest, mpz_t src, int lane)
     return;
 }
 
+int small_p[168] = {2,3,5,7,11,13,17,19,23,29,
+    31,37,41,43,47,53,59,61,67,71,
+    73,79,83,89,97,101,103,107,109,
+    113,127,131,137,139,149,151,157,
+    163,167,173,179,181,191,193,197,
+    199,211,223,227,229,233,239,241,
+    251,257,263,269,271,277,281,283,
+    293,307,311,313,317,331,337,347,
+    349,353,359,367,373,379,383,389,
+    397,401,409,419,421,431,433,439,
+    443,449,457,461,463,467,479,487,
+    491,499,503,509,521,523,541,547,
+    557,563,569,571,577,587,593,599,
+    601,607,613,617,619,631,641,643,
+    647,653,659,661,673,677,683,691,
+    701,709,719,727,733,739,743,751,
+    757,761,769,773,787,797,809,811,
+    821,823,827,829,839,853,857,859,
+    863,877,881,883,887,907,911,919,
+    929,937,941,947,953,967,971,977,
+    983,991,997};
+
+int tdiv_int(int x, int* factors)
+{
+    int numf = 0;
+    int xx = x;
+    int i;
+
+    i = 0;
+    while ((xx > 1) && (small_p[i] < 1000))
+    {
+        int q = (int)small_p[i];
+
+        if (xx % q != 0)
+            i++;
+        else
+        {
+            xx /= q;
+            factors[numf++] = q;
+        }
+    }
+
+    return numf;
+}
+
+// see: http://home.earthlink.net/~elevensmooth/MathFAQ.html#PrimDistinct
+void find_primitive_factor(mpz_t primitive, int exp1, int base1, int64_t coeff2)
+{
+    // factor the exponent.  The algebraic reductions yafu knows how to handle are
+    // for cunningham and homogenous cunningham inputs where the exponent is in
+    // the exp1 field.
+    int e = exp1;
+    int f[32];
+    int nf, i, j, k, m, mult;
+    // ranks of factors - we support up to 3 distinct odd factors of e
+    int franks[4][32];		// and beans
+    // and counts of the factors in each rank
+    int cranks[4];			// doesn't that make you happy?   <-- bonus points if you get this...
+    int nr, mrank;
+    mpz_t n, term, t;
+    int VFLAG = 3;
+
+    nf = tdiv_int(e, f);
+
+    for (i = 0; i < 4; i++)
+        cranks[i] = 0;
+
+    // now arrange the factors into ranks of combinations of unique, distinct, and odd factors.
+    // rank 0 is always 1
+    franks[0][0] = 1;
+    cranks[0] = 1;
+
+    // rank 1 is a list of the distinct odd factors.
+    j = 0;
+    if (VFLAG > 1) printf("gen: rank 1 terms: ");
+    for (i = 0; i < nf; i++)
+    {
+        if (f[i] & 0x1)
+        {
+            // odd
+            if (j == 0 || f[i] != franks[1][j - 1])
+            {
+                // distinct
+                franks[1][j++] = f[i];
+                if (VFLAG > 1) printf("%d ", f[i]);
+            }
+        }
+    }
+    if (VFLAG > 1) printf("\n");
+    cranks[1] = j;
+    nr = j + 1;
+
+    if (j > 3)
+    {
+        printf("gen: too many distinct odd factors in exponent!\n");
+        exit(1);
+    }
+
+    // ranks 2...nf build on the first rank combinatorially.
+    // knuth, of course, has a lot to say on enumerating combinations:
+    // http://www.cs.utsa.edu/~wagner/knuth/fasc3a.pdf
+    // in which algorithm T might be sufficient since e shouldn't have too many
+    // factors.
+    // but since e shouldn't have too many factors and I don't feel like implementing
+    // algorithm T from that reference right now, I will proceed to hardcode a bunch of
+    // simple loops.
+    // here is the second rank, if necessary
+    if (cranks[1] == 2)
+    {
+        franks[2][0] = franks[1][0] * franks[1][1];
+        cranks[2] = 1;
+        if (VFLAG > 1) printf("gen: rank 2 term: %d\n", franks[2][0]);
+    }
+    else if (cranks[1] == 3)
+    {
+        // combinations of 2 primes
+        m = 0;
+        if (VFLAG > 1) printf("gen: rank 2 terms: ");
+        for (j = 0; j < cranks[1] - 1; j++)
+        {
+            for (k = j + 1; k < cranks[1]; k++)
+            {
+                franks[2][m++] = franks[1][j] * franks[1][k];
+                if (VFLAG > 1) printf("%d ", franks[2][m - 1]);
+            }
+        }
+        cranks[2] = m;
+        if (VFLAG > 1) printf("\n");
+
+        // combinations of 3 primes
+        franks[3][0] = franks[1][0] * franks[1][1] * franks[1][2];
+        cranks[3] = 1;
+        if (VFLAG > 1) printf("gen: rank 3 term: %d\n", franks[3][0]);
+    }
+
+    // for exponents with repeated or even factors, find the multiplier
+    mult = e;
+    for (i = 0; i < cranks[1]; i++)
+        mult /= franks[1][i];
+    if (VFLAG > 1) printf("gen: base exponent multiplier: %d\n", mult);
+
+    // form the primitive factor, following the rank system of
+    // http://home.earthlink.net/~elevensmooth/MathFAQ.html#PrimDistinct
+    mpz_init(n);
+    mpz_set_ui(n, 1);
+    mpz_init(term);
+    mpz_init(t);
+    if ((nr & 0x1) == 1)
+        mrank = 0;
+    else
+        mrank = 1;
+    for (i = nr - 1; i >= 0; i--)
+    {
+        char c;
+        if ((i & 0x1) == mrank)
+        {
+            // multiply by every other rank - do this before the division
+            for (j = 0; j < cranks[i]; j++)
+            {
+                mpz_set_ui(term, base1);
+                mpz_pow_ui(term, term, franks[i][j] * mult);
+                if (coeff2 < 0) {
+                    mpz_sub_ui(term, term, 1); c = '-';
+                }
+                else {
+                    mpz_add_ui(term, term, 1); c = '+';
+                }
+                if (VFLAG > 1) gmp_printf("gen: multiplying by %d^%d %c 1 = %Zd\n",
+                    base1, franks[i][j] * mult, c, term);
+
+                mpz_mul(n, n, term);
+            }
+        }
+    }
+    for (i = nr - 1; i >= 0; i--)
+    {
+        char c;
+        if ((i & 0x1) == (!mrank))
+        {
+            // divide by every other rank
+            for (j = 0; j < cranks[i]; j++)
+            {
+                mpz_set_ui(term, base1);
+                mpz_pow_ui(term, term, franks[i][j] * mult);
+                if (coeff2 < 0) {
+                    mpz_sub_ui(term, term, 1); c = '-';
+                }
+                else {
+                    mpz_add_ui(term, term, 1); c = '+';
+                }
+                if (VFLAG > 1) gmp_printf("gen: dividing by %d^%d %c 1 = %Zd\n",
+                    base1, franks[i][j] * mult, c, term);
+
+                mpz_mod(t, n, term);
+                if (mpz_cmp_ui(t, 0) != 0)
+                {
+                    printf("gen: error, term doesn't divide n!\n");
+                }
+                else
+                {
+                    mpz_tdiv_q(n, n, term);
+                }
+            }
+        }
+    }
+
+    mpz_set(primitive, n);
+
+    mpz_clear(n);
+    mpz_clear(term);
+    mpz_clear(t);
+    return;
+}
 
 int main(int argc, char **argv)
 {
@@ -184,7 +397,6 @@ int main(int argc, char **argv)
     calc_finalize();
 
     mpz_set_str(gmpn, input.s, 10);
-    gmp_printf("commencing parallel ecm on %Zd\n", gmpn);
     
 	// check for Mersenne inputs
     size_n = mpz_sizeinbase(gmpn, 2);
@@ -223,6 +435,21 @@ int main(int argc, char **argv)
             isMersenne = mpz_get_ui(g);
             break;
         }
+    }
+
+    // if the input is Mersenne and still contains algebraic factors, remove them.
+    if (abs(isMersenne) == 1)
+    {
+        char ftype[8];
+        find_primitive_factor(g, size_n, 2, -isMersenne);
+        mpz_tdiv_q(r, gmpn, g);
+        if (mpz_probab_prime_p(g, 3))
+            strcpy(ftype, "PRP");
+        else
+            strcpy(ftype, "C");
+
+        gmp_printf("removing algebraic %s%d factor %Zd\n", ftype, (int)mpz_sizeinbase(r, 10), r);
+        mpz_gcd(gmpn, gmpn, g);
     }
 		
 	numcurves = strtoul(argv[2], NULL, 10);
@@ -269,10 +496,19 @@ int main(int argc, char **argv)
         }
     }
 
+    gmp_printf("commencing parallel ecm on %Zd\n", gmpn);
+
     if (isMersenne && ((double)NWORDS / ((double)MAXBITS / (double)DIGITBITS) < 0.7))
     {
-        printf("Mersenne input 2^%d - 1 determined to be faster by REDC\n", size_n);
+        char c;
+        if (isMersenne > 0)
+            c = '-';
+        else
+            c = '+';
+
+        printf("Mersenne input 2^%d %c %d determined to be faster by REDC\n", size_n, c, isMersenne);
         forceNoMersenne = 1;
+        MAXBITS = NWORDS * DIGITBITS;
     }
     else
     {
@@ -340,7 +576,7 @@ int main(int argc, char **argv)
 	numcurves = numcurves_per_thread * threads;
 
     printf("Input has %d bits, using %d threads (%d curves/thread)\n", 
-        mpz_sizeinbase(gmpn, 2), threads, numcurves_per_thread);
+        (int)mpz_sizeinbase(gmpn, 2), threads, numcurves_per_thread);
     printf("Processing in batches of %u primes\n", PRIME_RANGE);
 
     tdata = (thread_data_t *)malloc(threads * sizeof(thread_data_t));

@@ -1307,7 +1307,7 @@ int * getEseq(uint64_t d, uint64_t e)
 		uint32_t x = 1;
 		it = 0;
 
-		printf("target is %u, sequence length is %u\n", target, seqLen);
+		printf("target is %lu, sequence length is %d\n", target, seqLen);
 		while (seq[it] != 0)
 		{
 			if (seq[it] == 1)
@@ -2271,67 +2271,81 @@ void vececm(thread_data_t *tdata)
 			printf("commencing Stage 1 @ prime %lu\n", P_MIN);
             tpool_go(tpool_data);
 
-            //sprintf(fname, "checkpoint.txt");
-            //save = fopen(fname, "a");
-            //if (save != NULL)
-            //{
-            //    for (j = 0; j < threads; j++)
-            //    {
-            //        // GMP-ECM wants X/Z.
-            //        // or, equivalently, X and Z listed separately.
-            //        vecmulmod_ptr(tdata[j].P->X, one, tdata[j].work->tt4, tdata[j].work->n,
-            //            tdata[j].work->tt2, tdata[j].mdata);
-            //
-            //        vecmulmod_ptr(tdata[j].P->Z, one, tdata[j].work->tt3, tdata[j].work->n,
-            //            tdata[j].work->tt2, tdata[j].mdata);
-            //
-            //        for (i = 0; i < VECLEN; i++)
-            //        {
-            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].P->Z, i, NWORDS);
-            //
-            //            if (mpz_cmp_ui(gmpt, 0) == 0)
-            //            {
-            //                printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
-            //            }
-            //
-            //            result = check_factor(gmpt, gmpn, tdata[j].factor);
-            //            if (result == 1)
-            //            {
-            //                FILE* out = fopen("ecm_results.txt", "a");
-            //
-            //                gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
-            //                    tdata[j].factor, j, i);
-            //                printf("%"PRIu64"\n", tdata[j].sigma[i]);
-            //
-            //                if (out != NULL)
-            //                {
-            //                    gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-            //                        "in thread %d, vec position %d, with sigma = ",
-            //                        tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
-            //                    fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
-            //                    fclose(out);
-            //                }
-            //                fflush(stdout);
-            //                found = 1;
-            //            }
-            //
-            //            fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
-            //                tdata[j].sigma[i], STAGE1_MAX);
-            //            gmp_fprintf(save, "N=0x%Zx; ", gmpn);
-            //
-            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
-            //            gmp_fprintf(save, "X=0x%Zx; ", gmpt);
-            //
-            //            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
-            //            gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
-            //        }
-            //    }
-            //    fclose(save);
-            //}
-            //else
-            //{
-            //    printf("could not open checkpoint.txt for appending, Stage 1 data will not be saved\n");
-            //}
+            if (PRIMES[tdata[0].work->last_pid] < STAGE1_MAX)
+            {
+                sprintf(fname, "checkpoint.txt");
+                save = fopen(fname, "a");
+                if (save != NULL)
+                {
+                    printf("Saving checkpoint after p=%lu\n", PRIMES[tdata[0].work->last_pid - 1]);
+                    for (j = 0; j < threads; j++)
+                    {
+                        // GMP-ECM wants X/Z.
+                        // or, equivalently, X and Z listed separately.
+                        vecmulmod_ptr(tdata[j].P->X, one, tdata[j].work->tt4, tdata[j].work->n,
+                            tdata[j].work->tt2, tdata[j].mdata);
+
+                        vecmulmod_ptr(tdata[j].P->Z, one, tdata[j].work->tt3, tdata[j].work->n,
+                            tdata[j].work->tt2, tdata[j].mdata);
+
+                        for (i = 0; i < VECLEN; i++)
+                        {
+                            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].P->Z, i, NWORDS);
+
+                            if (mpz_cmp_ui(gmpt, 0) == 0)
+                            {
+                                printf("something failed: tid = %d, vec = %d has zero result\n", (int)j, (int)i);
+                            }
+
+                            result = check_factor(gmpt, gmpn, tdata[j].factor);
+                            if (result == 1)
+                            {
+                                FILE* out = fopen("ecm_results.txt", "a");
+                                int isp = mpz_probab_prime_p(tdata[j].factor, 3);
+                                char ftype[8];
+
+                                if (isp)
+                                    strcpy(ftype, "PRP");
+                                else
+                                    strcpy(ftype, "C");
+
+                                sprintf(ftype, "%s%d", ftype, (int)mpz_sizeinbase(tdata[j].factor, 10));
+
+                                gmp_printf("\nfound %s factor %Zd in stage 1 (B1 = %lu): thread %d, vec %d, sigma ",
+                                    ftype, tdata[j].factor, PRIMES[tdata[0].work->last_pid - 1], j, i);
+                                printf("%"PRIu64"\n", tdata[j].sigma[i]);
+
+                                if (out != NULL)
+                                {
+                                    gmp_fprintf(out, "\nfound %s factor %Zd in stage 1 (B1 = %lu): curve %d, "
+                                        "thread %d, vec %d, sigma ",
+                                        ftype, tdata[j].factor, PRIMES[tdata[0].work->last_pid - 1],
+                                        threads * curve + j * VECLEN + i, j, i);
+                                    fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
+                                    fclose(out);
+                                }
+                                fflush(stdout);
+                                found = 1;
+                            }
+
+                            fprintf(save, "METHOD=ECM; SIGMA=%"PRIu64"; B1=%"PRIu64"; ",
+                                tdata[j].sigma[i], PRIMES[tdata[0].work->last_pid - 1]);
+                            gmp_fprintf(save, "N=0x%Zx; ", gmpn);
+
+                            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt4, i, NWORDS);
+                            gmp_fprintf(save, "X=0x%Zx; ", gmpt);
+
+                            extract_bignum_from_vec_to_mpz(gmpt, tdata[j].work->tt3, i, NWORDS);
+                            gmp_fprintf(save, "Z=0x%Zx; PROGRAM=AVX-ECM;\n", gmpt);
+                        }
+                    }
+                    fclose(save);
+                }
+                else
+                {
+                    printf("could not open checkpoint.txt for appending, Stage 1 data will not be saved\n");
+                }
+            }
         }
 
         gettimeofday(&stopt, NULL);
@@ -2358,23 +2372,32 @@ void vececm(thread_data_t *tdata)
 
                     if (mpz_cmp_ui(gmpt, 0) == 0)
                     {
-                        printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
+                        printf("something failed: tid = %d, vec = %d has zero result\n", (int)j, (int)i);
                     }
 
                     result = check_factor(gmpt, gmpn, tdata[j].factor);
                     if (result == 1)
                     {
                         FILE* out = fopen("ecm_results.txt", "a");
-                    
-                        gmp_printf("\nfound factor %Zd in stage 1 in thread %d, vec position %d, with sigma = ",
-                            tdata[j].factor, j, i);
+                        int isp = mpz_probab_prime_p(tdata[j].factor, 3);
+                        char ftype[8];
+
+                        if (isp)
+                            strcpy(ftype, "PRP");
+                        else
+                            strcpy(ftype, "C");
+
+                        sprintf(ftype, "%s%d", ftype, (int)mpz_sizeinbase(tdata[j].factor, 10));
+
+                        gmp_printf("\nfound %s factor %Zd in stage 1 (B1 = %lu): thread %d, vec %d, sigma ",
+                            ftype, tdata[j].factor, STAGE1_MAX, j, i);
                         printf("%"PRIu64"\n", tdata[j].sigma[i]);
                     
                         if (out != NULL)
                         {
-                            gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-                                "in thread %d, vec position %d, with sigma = ",
-                                tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+                            gmp_fprintf(out, "\nfound %s factor %Zd in stage 1 (B1 = %lu): curve %d, "
+                                "thread %d, vec %d, sigma ",
+                                ftype, tdata[j].factor, STAGE1_MAX, threads * curve + j * VECLEN + i, j, i);
                             fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
                             fclose(out);
                         }
@@ -2477,22 +2500,32 @@ void vececm(thread_data_t *tdata)
 
                     if (mpz_cmp_ui(gmpt, 0) == 0)
                     {
-                        printf("something failed: tid = %d, vec = %d has zero result\n", j, i);
+                        printf("something failed: tid = %d, vec = %d has zero result\n", (int)j, (int)i);
                     }
 
                     if (result == 1)
                     {
 						FILE *out = fopen("ecm_results.txt", "a");
+                        int isp = mpz_probab_prime_p(tdata[j].factor, 3);
+                        char ftype[8];
 
-                        gmp_printf("\nfound factor %Zd in stage 2 in thread %d, vec position %d, with sigma = ",
-                            tdata[j].factor, j, i);
+                        if (isp)
+                            strcpy(ftype, "PRP");
+                        else
+                            strcpy(ftype, "C");
+
+                        sprintf(ftype, "%s%d", ftype, (int)mpz_sizeinbase(tdata[j].factor, 10));
+
+                        gmp_printf("\nfound %s factor %Zd in stage 2 (B2 = %lu): thread %d, "
+                            "vec %d, sigma ",
+                            ftype, tdata[j].factor, STAGE2_MAX, j, i);
                         printf("%"PRIu64"\n", tdata[j].sigma[i]);
 
 						if (out != NULL)
 						{
-							gmp_fprintf(out, "\nfound factor %Zd in stage 1 at curve %d, "
-								"in thread %d, vec position %d, with sigma = ",
-                                tdata[j].factor, threads * curve + j * VECLEN + i, j, i);
+							gmp_fprintf(out, "\nfound %s factor %Zd in stage 2 (B2 = %lu): curve %d, "
+								"thread %d, vec %d, sigma ",
+                                ftype, tdata[j].factor, STAGE2_MAX, threads * curve + j * VECLEN + i, j, i);
                             fprintf(out, "%"PRIu64"\n", tdata[j].sigma[i]);
 							fclose(out);
 						}

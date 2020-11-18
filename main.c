@@ -49,11 +49,6 @@ void thread_init(thread_data_t *tdata, monty *mdata);
 
 static int debugctr = 0;
 
-#ifdef WIN64
-//#define mpz_get_ui(x) ( (((x)->_mp_d[1]) << 32) | ((x)->_mp_d[0]) )
-
-#endif
-
 void extract_bignum_from_vec_to_mpz(mpz_t dest, bignum *vec_src, int num, int sz)
 {
     int j;
@@ -131,7 +126,8 @@ void insert_mpz_to_vec(bignum *vec_dest, mpz_t src, int lane)
     return;
 }
 
-int small_p[168] = {2,3,5,7,11,13,17,19,23,29,
+#define NUM_SMALL_P 168
+int small_p[NUM_SMALL_P] = { 2,3,5,7,11,13,17,19,23,29,
     31,37,41,43,47,53,59,61,67,71,
     73,79,83,89,97,101,103,107,109,
     113,127,131,137,139,149,151,157,
@@ -160,7 +156,7 @@ int tdiv_int(int x, int* factors)
     int i;
 
     i = 0;
-    while ((xx > 1) && (small_p[i] < 1000))
+    while ((xx > 1) && (i < NUM_SMALL_P))
     {
         int q = (int)small_p[i];
 

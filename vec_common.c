@@ -48,6 +48,7 @@ bignum * vecInit(void)
         n->data[i] = 0;
     }
     n->size = 1;
+    n->signmask = 0;
 
     return n;
 }

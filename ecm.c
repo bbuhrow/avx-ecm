@@ -71,6 +71,8 @@ void build_one_curve(thread_data_t *tdata, mpz_t X, mpz_t Z, mpz_t A, uint64_t s
 void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *primes, int verbose);
 void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
 void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
+void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose);
+void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose);
 
 base_t spGCD(base_t x, base_t y)
 {
@@ -982,15 +984,20 @@ void ecm_work_init(ecm_work *work)
 	work->n = vecInit();
 
 	work->Paprod = (bignum **)malloc((2 * L) * sizeof(bignum *));
+    work->Pa_inv = (bignum * *)malloc((2 * L) * sizeof(bignum*));
 	work->Pa = (ecm_pt *)malloc((2 * L) * sizeof(ecm_pt));
 	for (j = 0; j < (2 * L); j++)
 	{
 		work->Paprod[j] = vecInit();
+        work->Pa_inv[j] = vecInit();
 		ecm_pt_init(&work->Pa[j]);
 	}
 
 	work->Pad = (ecm_pt *)malloc(sizeof(ecm_pt));
 	ecm_pt_init(work->Pad);
+
+    work->Pdnorm = (ecm_pt*)malloc(sizeof(ecm_pt));
+    ecm_pt_init(work->Pdnorm);
 
 	// build an array to hold values of f(b).
 	// will need to be of size U*R, allowed values will be
@@ -1115,11 +1122,14 @@ void ecm_work_free(ecm_work *work)
 	{
 		ecm_pt_free(&work->Pa[i]);
 		vecFree(work->Paprod[i]);
+        vecFree(work->Pa_inv[i]);
 	}
 
 	ecm_pt_free(work->Pad);
+    ecm_pt_free(work->Pdnorm);
 	free(work->Pa);
 	free(work->Pad);
+    free(work->Pdnorm);
 	free(work->marks);
 	free(work->nmarks);
 	free(work->map);
@@ -2442,6 +2452,10 @@ void vececm(thread_data_t *tdata)
             }
             tpool_go(tpool_data);
 
+            gettimeofday(&stopt, NULL);
+            t_time = my_difftime(&startt, &stopt);
+            printf("Stage 2 Init took %1.4f seconds\n", t_time);
+
             for (; last_p < STAGE2_MAX; )
             {
 				if (last_p == P_MAX)
@@ -2862,6 +2876,21 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 	return;
 }
 
+// _TEST
+#define CROSS_PRODUCT_INV \
+vecsubmod_ptr(work->Pa_inv[pa], Pb[rprime_map_U[pb]].X, work->tt1, mdata);          \
+vecmulmod_ptr(acc, work->tt1, acc, work->n, work->tt4, mdata);        
+
+// pre-computing the sum/diff multiplies is not efficient - many
+// of the sum/diff product combinations will never be used
+#define CROSS_PRODUCT \
+vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);          \
+vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);          \
+vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);    \
+vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);       \
+vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);                     \
+vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);        
+
 void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose)
 {
 	// run Montgomery's PAIR algorithm.  
@@ -3116,32 +3145,12 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				{
 					if (peekqueue(Q[i]) < amin)
 					{
-						//printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[numR - i - 1]);
 						int pa = dequeue(Q[i]) - oldmin;
 						int pb = rmap[numR - i - 1];
 
-						if (verbose & debug) {
-							if (((((oldmin + pa) * ascale) + pb) == 3266117) ||
-								((((oldmin + pa) * ascale) - pb) == 3266117))
-							{
-								printf("5: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("u = %d\n", u);
-								printf("amin = %d\n", amin);
-							}
-						}
-
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 
 						work->paired++;
 					}
@@ -3158,33 +3167,12 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				{
 					if (peekqueue(Q[i]) < amin)
 					{
-						//printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[i - numR]);
 						int pa = dequeue(Q[i]) - oldmin;
 						int pb = rmap[i - numR];
 
-						if (verbose & debug) {
-							if (((((oldmin + pa) * ascale) + pb) == 3266117) ||
-								((((oldmin + pa) * ascale) - pb) == 3266117))
-							{
-								printf("6: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("u = %d\n", u);
-								printf("amin = %d\n", amin);
-							}
-						}
-
-						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 						work->paired++;
 					}
 					else
@@ -3201,9 +3189,6 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				vecCopy(Pa[i].X, Pa[j].X);
 				vecCopy(Pa[i].Z, Pa[j].Z);
 				vecCopy(Paprod[i], Paprod[j]);
-
-				if (verbose & (debug == 2))
-					printf("Pa[%d] = [%d]Q\n", j, oldmin * ascale + i * ainc);
 			}
 
 			// make new A's using the last two points
@@ -3222,17 +3207,9 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 				//and Paprod
 				vecmulmod_ptr(Pa[i].X, Pa[i].Z, Paprod[i], work->n, work->tt4, mdata);
-
 				work->A += ainc;
-				
-				if (verbose & (debug == 2))
-					printf("Pa[%d] = [%lu]Q\n", i, work->A);
-
 				work->ptadds++;
 			}
-
-			if (verbose & (debug == 2))
-				printf("amin is now %u\n", amin);  fflush(stdout);
 		}
 
 		q = s - a * ascale;
@@ -3260,24 +3237,9 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 					if (u > umax)
 					{
-						//printf("(%u,%u)\n", 2 * ap, abs(q));
 						int pa = ap - amin;
 						int pb = abs(q);
 
-						if (verbose & debug) {
-							if (((((amin + pa) * ascale) + pb) == 3266117) ||
-								((((amin + pa) * ascale) - pb) == 3266117))
-							{
-								printf("1: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("amin = %d\n", amin);
-							}
-						}
-
-						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
 
@@ -3300,36 +3262,15 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 
 					}
 					else
 					{
-						//printf("(%u,%u)\n", (a + ap), u);
 						int pa = (a + ap) - 2 * amin;
 						int pb = u;
-						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						if (verbose & debug) {
-							if (((((2 * amin + pa) * w) + pb) == 3266117) ||
-								((((2 * amin + pa) * w) - pb) == 3266117))
-							{
-								printf("2: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("u = %d\n", u);
-								printf("map[u] = %u\n", rprime_map_U[pb]);
-								printf("amin = %d\n", amin);
-							}
-						}
 
 						if (pa & 1)
 						{
@@ -3365,12 +3306,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					work->paired++;
 				}
@@ -3378,12 +3314,10 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				{
 					if (q < 0)
 					{
-						//printf("queueing %u in Q[%u](%d)\n", a, R - map[abs(q)] - 1, q);
 						enqueue(Q[numR - map[abs(q)] - 1], a);
 					}
 					else
 					{
-						//printf("queueing %u in Q[%u](%d)\n", a, R + map[abs(q)], q);
 						enqueue(Q[numR + map[abs(q)]], a);
 					}
 					u = 0;
@@ -3394,7 +3328,6 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				if (Q[numR + map[abs(mq)]]->len > 0)
 				{
 					ap = dequeue(Q[numR + map[abs(mq)]]);
-					//printf("dequeued %u from Q[%u](%d)\n", ap, R + map[abs(mq)],mq);
 
 					if (ap == 0)
 					{
@@ -3409,25 +3342,10 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 					if (u > umax)
 					{
-						//printf("(%u,%u)\n", 2 * ap, abs(q));
 						int pa = ap - amin;
 						int pb = abs(q);
-						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-
-						if (verbose & debug) {
-							if (((((amin + pa) * ascale) + pb) == 3266117) ||
-								((((amin + pa) * ascale) - pb) == 3266117))
-							{
-								printf("3: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("amin = %d\n", amin);
-							}
-						}
 
 						if ((pb < 0) || (pb >= (U * D)))
 						{
@@ -3448,34 +3366,14 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					else
 					{
-						//printf("(%u,%u)\n", (a + ap), u);
 						int pa = (a + ap) - 2 * amin;
 						int pb = u;
-						//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 						// accumulate the cross product  (zimmerman syntax).
 						// page 342 in C&P
-						if (verbose & debug) {
-							if (((((2 * amin + pa) * w) + pb) == 3266117) ||
-								((((2 * amin + pa) * w) - pb) == 3266117))
-							{
-								printf("4: accumulating (%u,%u) = 3266117\n", pa, pb); fflush(stdout);
-								printf("a  = %u\n", a);
-								printf("ap  = %u\n", ap);
-								printf("q  = %d\n", q);
-								printf("mq = %d\n", mq);
-								printf("u = %d\n", u);
-								printf("amin = %d\n", amin);
-							}
-						}
 
 						if (pa & 1)
 						{
@@ -3511,12 +3409,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 							exit(-1);
 						}
 
-						vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-						vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-						vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-						vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-						vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-						vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+                        CROSS_PRODUCT;
 					}
 					work->paired++;
 				}
@@ -3524,12 +3417,10 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 				{
 					if (q < 0)
 					{
-						//printf("queueing %u in Q[%u](%d)\n", a, R - map[abs(q)] - 1, q);
 						enqueue(Q[numR - map[abs(q)] - 1], a);
 					}
 					else
 					{
-						//printf("queueing %u in Q[%u](%d)\n", a, R + map[abs(q)], q);
 						enqueue(Q[numR + map[abs(q)]], a);
 					}
 					u = 0;
@@ -3540,25 +3431,17 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 
 	}
 
-	//printf("main loop done, flushing Queues\n"); fflush(stdout);
 	j = 0;
 
 	for (i = 0; i < numR; i++)
 	{
 		while (Q[i]->len > 0)
 		{
-			//printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[numR - i - 1]);
 			int pa = dequeue(Q[i]) - amin;
 			int pb = rmap[numR - i - 1];
-			//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 			// accumulate the cross product  (zimmerman syntax).
 			// page 342 in C&P
-			vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-			vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-			vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-			vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-			vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-			vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+            CROSS_PRODUCT;
 			work->paired++;
 		}
 	}
@@ -3566,18 +3449,11 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 	{
 		while (Q[i]->len > 0)
 		{
-			//printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[i - numR]);
 			int pa = dequeue(Q[i]) - amin;
 			int pb = rmap[i - numR];
-			//printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
 			// accumulate the cross product  (zimmerman syntax).
 			// page 342 in C&P
-			vecsubmod_ptr(Pa[pa].X, Pb[rprime_map_U[pb]].X, work->tt1, mdata);
-			vecaddmod_ptr(Pa[pa].Z, Pb[rprime_map_U[pb]].Z, work->tt2, mdata);
-			vecmulmod_ptr(work->tt1, work->tt2, work->tt3, work->n, work->tt4, mdata);
-			vecaddmod_ptr(work->tt3, Pbprod[rprime_map_U[pb]], work->tt1, mdata);
-			vecsubmod_ptr(work->tt1, Paprod[pa], work->tt2, mdata);
-			vecmulmod_ptr(acc, work->tt2, acc, work->n, work->tt4, mdata);
+            CROSS_PRODUCT;
 			work->paired++;
 		}
 	}
@@ -3586,6 +3462,712 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 	work->last_pid = pid;
 
 	return;
+}
+
+void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+{
+    // run Montgomery's PAIR algorithm.  
+    uint32_t D = work->D;
+    uint32_t R = work->R;
+    uint32_t w = D;
+    uint32_t U = work->U;
+    uint32_t L = work->L;
+    uint32_t umax = U * w;
+    int i, j, k, pid;
+
+    uint32_t ainc = 2 * D;
+    uint32_t ascale = 2 * D;
+    uint32_t amin = work->amin = (STAGE1_MAX + w) / ascale;
+    uint32_t s;
+    uint32_t a;
+
+    uint32_t numR;
+    uint32_t u, ap;
+    int q, mq;
+    int debug = 0;
+
+    uint32_t* rprime_map_U = work->map;
+    ecm_pt* Pa = work->Pa;
+    bignum** Paprod = work->Paprod;
+    bignum** Pbprod = work->Pbprod;
+    ecm_pt* Pb = work->Pb;
+    ecm_pt* Pd;
+    bignum* acc = work->stg2acc;
+
+
+    if (verbose == 1)
+        printf("\n");
+
+    work->paired = 0;
+    work->numprimes = 0;
+    work->ptadds = 0;
+    work->stg1Add = 0;
+    work->stg1Doub = 0;
+
+    //stage 2 init
+    //Q = P = result of stage 1
+    //compute [d]Q for 0 < d <= D
+    Pd = &Pb[rprime_map_U[w]];
+
+    // [1]Q
+    vecCopy(P->Z, Pb[1].Z);
+    vecCopy(P->X, Pb[1].X);
+    vecmulmod_ptr(Pb[1].X, Pb[1].Z, Pbprod[1], work->n, work->tt4, mdata);
+
+    // [2]Q
+    vecCopy(P->Z, Pb[2].Z);
+    vecCopy(P->X, Pb[2].X);
+    vecaddsubmod_ptr(P->X, P->Z, work->sum1, work->diff1, mdata);
+    vec_duplicate(mdata, work, work->sum1, work->diff1, &Pb[2]);
+    vecmulmod_ptr(Pb[2].X, Pb[2].Z, Pbprod[2], work->n, work->tt4, mdata);
+
+    // [3]Q, [4]Q, ... [D]Q
+    // because of the way we pick 'a' and 'D', we'll only need the 479 points that 
+    // are relatively prime to D.  We need to keep a few points during the running 
+    // computation i.e., ... j, j-1, j-2. The lookup table rprime_map maps the 
+    // integer j into the relatively prime indices that we store. We also store
+    // points 1, 2, and D, and storage point 0 is used as scratch for a total of
+    // 483 stored points.
+
+    vecCopy(Pb[1].X, work->pt2.X);
+    vecCopy(Pb[1].Z, work->pt2.Z);
+    vecCopy(Pb[2].X, work->pt1.X);
+    vecCopy(Pb[2].Z, work->pt1.Z);
+
+    for (j = 3; j <= U * D; j++)
+    {
+        ecm_pt* P1 = &work->pt1;			// Sd - 1
+        ecm_pt* P2 = &Pb[1];				// S1
+        ecm_pt* P3 = &work->pt2;			// Sd - 2
+        ecm_pt* Pout = &Pb[rprime_map_U[j]];	// Sd
+
+        // vecAdd:
+        //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+        //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+        //x- = original x
+        //z- = original z
+
+        // compute Sd from Sd-1 + S1, requiring Sd-1 - S1 = Sd-2
+        vecaddsubmod_ptr(P1->X, P1->Z, work->sum1, work->diff1, mdata);
+        vecaddsubmod_ptr(P2->X, P2->Z, work->sum2, work->diff2, mdata);
+
+        vecmulmod_ptr(work->diff1, work->sum2, work->tt1, work->n, work->tt4, mdata);	//U
+        vecmulmod_ptr(work->sum1, work->diff2, work->tt2, work->n, work->tt4, mdata);	//V
+
+        vecaddsubmod_ptr(work->tt1, work->tt2, Pout->X, Pout->Z, mdata);		        //U +/- V
+        vecsqrmod_ptr(Pout->X, work->tt1, work->n, work->tt4, mdata);					//(U + V)^2
+        vecsqrmod_ptr(Pout->Z, work->tt2, work->n, work->tt4, mdata);					//(U - V)^2
+
+        // if gcd(j,D) != 1, Pout maps to scratch space (Pb[0])
+        vecmulmod_ptr(work->tt1, P3->Z, Pout->X, work->n, work->tt4, mdata);			//Z * (U + V)^2
+        vecmulmod_ptr(work->tt2, P3->X, Pout->Z, work->n, work->tt4, mdata);			//x * (U - V)^2
+
+        //store Pb[j].X * Pb[j].Z as well
+        vecmulmod_ptr(Pout->X, Pout->Z, Pbprod[rprime_map_U[j]],
+            work->n, work->tt4, mdata);
+
+        work->ptadds++;
+
+        // advance
+        vecCopy(P1->X, P3->X);
+        vecCopy(P1->Z, P3->Z);
+        vecCopy(Pout->X, P1->X);
+        vecCopy(Pout->Z, P1->Z);
+
+        //printf("rprime_map_U[%d] = %u\n", j, rprime_map_U[j]);
+    }
+
+    //printf("B table generated to umax = %d\n", U * D);
+
+    // Pd = [2w]Q
+    vecCopy(P->Z, Pd->Z);
+    vecCopy(P->X, Pd->X);
+    next_pt_vec(mdata, work, Pd, ainc);
+    //prac(mdata, work, Pd, ainc);
+
+    vecCopy(Pd->X, work->Pdnorm->X);
+    vecCopy(Pd->Z, work->Pdnorm->Z);
+
+    //first a value: first multiple of D greater than B1
+    work->A = amin * ascale;
+
+    //initialize info needed for giant step
+    vecCopy(P->Z, Pa[0].Z);
+    vecCopy(P->X, Pa[0].X);
+    next_pt_vec(mdata, work, &Pa[0], work->A);
+    //prac(mdata, work, &Pa[0], work->A);
+
+    //and Paprod
+    vecmulmod_ptr(Pa[0].X, Pa[0].Z, Paprod[0], work->n, work->tt4, mdata);
+    if (verbose & (debug == 2))
+        printf("Pa[0] = [%lu]Q\n", work->A);
+
+    vecCopy(P->Z, work->Pad->Z);
+    vecCopy(P->X, work->Pad->X);
+    next_pt_vec(mdata, work, work->Pad, work->A - ainc);
+    //prac(mdata, work, work->Pad, work->A - ainc);
+
+    if (verbose & (debug == 2))
+        printf("Pad = [%lu]Q\n", work->A - ainc);
+
+    vecaddmod_ptr(Pa[0].X, Pa[0].Z, work->sum1, mdata);
+    vecaddmod_ptr(work->Pdnorm->X, work->Pdnorm->Z, work->sum2, mdata);
+    vecsubmod_ptr(Pa[0].X, Pa[0].Z, work->diff1, mdata);
+    vecsubmod_ptr(work->Pdnorm->X, work->Pdnorm->Z, work->diff2, mdata);
+    vec_add(mdata, work, work->Pad, &Pa[1]);
+    vecmulmod_ptr(Pa[1].X, Pa[1].Z, Paprod[1], work->n, work->tt4, mdata);
+
+    work->A += ainc;
+    if (verbose & (debug == 2))
+        printf("Pa[1] = [%lu]Q\n", work->A + ainc);
+
+    for (i = 2; i < 2 * L; i++)
+    {
+        //giant step - use the addition formula for ECM
+        //Pa + Pd
+        //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+        //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+        //x- = [a-d]x
+        //z- = [a-d]z
+        vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+        vecaddsubmod_ptr(work->Pdnorm->X, work->Pdnorm->Z, work->sum2, work->diff2, mdata);
+        vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+        work->A += ainc;
+        work->ptadds++;
+        if (verbose & (debug == 2))
+            printf("Pa[%d] = [%lu]Q\n", i, work->A + i * ainc);
+
+        //and Paprod
+        vecmulmod_ptr(Pa[i].X, Pa[i].Z, Paprod[i], work->n, work->tt4, mdata);
+    }
+
+    // here, we have temporary space for B, A is put into the unused Pbprod, and C is Pb.Z.
+    // faster batch inversion in three phases, as follows:
+    // first, set A1 = z1 and Ai = zi * A(i-1) so that Ai = prod(j=1,i,zj).
+    vecCopy(Pb[1].Z, Pbprod[1]);
+    for (j = 2; j < U * (R + 1); j++)
+    {
+        vecmulmod_ptr(Pb[i].Z, Pbprod[i - 1], Pbprod[i], work->n, work->tt4, mdata);
+    }
+
+    int Bmax = U * R + 2;
+
+    mpz_t gmptmp, gmpn;
+    mpz_init(gmptmp);
+    mpz_init(gmpn);
+
+    bignum** B;
+    B = (bignum **)malloc(Bmax * sizeof(bignum*));
+
+    printf("U * (R + 1) = %u, U * D = %u\n", U* (R + 1), U* D);
+    for (j = 0; j < Bmax; j++)
+    {
+        B[j] = vecInit();
+    }
+
+    // now we have to take An out of monty rep so we can invert it.
+    for (j = 0; j < VECLEN; j++)
+    {
+        work->tt1->data[j] = 1;
+    }
+    work->tt1->size = 1;
+    vecmulmod_ptr(Pbprod[Bmax - 1], work->tt1, B[Bmax - 1], work->n, work->tt4, mdata);
+
+    extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
+    for (j = 0; j < VECLEN; j++)
+    {
+        // extract this vec position so we can use mpz_invert.
+        extract_bignum_from_vec_to_mpz(gmptmp, B[Bmax - 1], j, NWORDS);
+
+        // invert it
+        mpz_invert(gmptmp, gmptmp, gmpn);
+
+        // now put it back into Monty rep.
+        mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+        mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+
+        // and stuff it back in the vector.
+        insert_mpz_to_vec(B[Bmax - 1], gmptmp, j);
+    }
+    
+
+    // and continue.
+    for (i = Bmax - 2; i >= 0; i--)
+    {
+        vecmulmod_ptr(Pb[i + 1].Z, B[i + 1], B[i], work->n, work->tt4, mdata);
+        //B[i] = mulredcx(Pb[i + 1].Z, B[i + 1], work->n, rho);
+    }
+
+    // Now we have Bi = prod(j=1,i,zj^-1).
+    // finally, set C1 = B1 and Ci = A(i-1) * B(i) for i > 1.
+    // Then Ci = zi^-1 for i > 1.
+    //Pb[1].Z = B[1];
+    vecCopy(B[1], Pb[1].Z);
+
+    for (i = 2; i < Bmax; i++)
+    {
+        vecmulmod_ptr(B[i], work->Pbprod[i - 1], Pb[i].Z, work->n, work->tt4, mdata);
+        //Pb[i].Z = mulredcx(B[i], work->Pbprod[i - 1], work->n, rho);
+    }
+
+    // each phase takes n-1 multiplications so we have 3n-3 total multiplications
+    // and one inversion mod N.
+    // but we still have to combine with the X coord.
+    for (i = 1; i < Bmax; i++)
+    {
+        vecmulmod_ptr(Pb[i].X, Pb[i].Z, Pb[i].X, work->n, work->tt4, mdata);
+        //Pb[i].X = mulredcx(Pb[i].X, Pb[i].Z, work->n, rho);
+    }
+
+    for (j = 0; j < Bmax; j++)
+    {
+        vecClear(B[j]);
+    }
+    free(B);
+    
+    // convert all Pa's the slow way for now
+    for (i = 0; i < 2 * L; i++)
+    {
+        for (j = 0; j < VECLEN; j++)
+        {
+            // extract this vec position so we can use mpz_invert.
+            extract_bignum_from_vec_to_mpz(gmptmp, Pa[i].Z, j, NWORDS);
+
+            // invert it
+            mpz_invert(gmptmp, gmptmp, gmpn);
+
+            // now put it back into Monty rep.
+            mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+            mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+
+            // and stuff it back in the vector.
+            insert_mpz_to_vec(work->Pa_inv[i], gmptmp, j);
+        }
+        vecmulmod_ptr(Pa[i].X, work->Pa_inv[i], work->Pa_inv[i], work->n, work->tt4, mdata);
+    }
+
+    mpz_clear(gmptmp);
+    mpz_clear(gmpn);
+
+    if (verbose & (debug == 2))
+        printf("A table generated to 2 * L = %d\n", 2 * L);
+
+    // initialize accumulator
+    vecCopy(mdata->one, acc);
+
+    return;
+}
+
+void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+{
+    // run Montgomery's PAIR algorithm.  
+    uint32_t D = work->D;
+    uint32_t R = work->R;
+    uint32_t w = D;
+    uint32_t U = work->U;
+    uint32_t L = work->L;
+    uint32_t umax = U * w;
+    int i, j, k, pid;
+    Queue_t** Q = work->Q;
+    uint32_t ainc = 2 * D;
+    uint32_t ascale = 2 * D;
+    uint32_t amin = work->amin;
+    uint64_t s;
+    uint32_t a;
+    uint32_t* map = work->Qmap;
+    uint32_t* rmap = work->Qrmap;
+    uint32_t numR = R - 3;
+    uint32_t u, ap;
+    int q, mq;
+    int debug = 0;
+
+    uint32_t* rprime_map_U = work->map;
+    ecm_pt* Pa = work->Pa;
+    bignum** Paprod = work->Paprod;
+    bignum** Pbprod = work->Pbprod;
+    ecm_pt* Pb = work->Pb;
+    ecm_pt* Pd = work->Pdnorm; //&Pb[rprime_map_U[w]];
+    bignum* acc = work->stg2acc;
+
+    mpz_t gmptmp, gmpn;
+    mpz_init(gmptmp);
+    mpz_init(gmpn);
+
+    extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
+
+    if (verbose == 1)
+        printf("\n");
+
+    pid = work->last_pid;
+    if (verbose)
+    {
+        printf("commencing stage 2 at p=%lu, A=%u\n"
+            "w = %u, R = %u, L = %u, umax = %u, amin = %u\n",
+            PRIMES[pid], amin * ascale, w, numR, L, umax, amin);
+    }
+
+    while ((pid < NUM_P) && (PRIMES[pid] < STAGE2_MAX))
+    {
+        work->numprimes++;
+
+        s = PRIMES[pid++];
+        a = (s + w) / ascale;
+
+        if ((verbose == 1) && ((pid & 32767) == 0))
+        {
+            printf("accumulating prime %lu\r", PRIMES[pid]);
+            fflush(stdout);
+        }
+
+        // new range of a
+        while (a >= (amin + L))
+        {
+            uint32_t oldmin = amin;
+
+            amin = amin + L - U;
+
+            for (i = 0; i < numR; i++)
+            {
+                while (Q[i]->len > 0)
+                {
+                    if (peekqueue(Q[i]) < amin)
+                    {
+                        //printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[numR - i - 1]);
+                        int pa = dequeue(Q[i]) - oldmin;
+                        int pb = rmap[numR - i - 1];
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+                        CROSS_PRODUCT_INV;
+
+                        work->paired++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            for (i = numR; i < 2 * numR; i++)
+            {
+                while (Q[i]->len > 0)
+                {
+                    if (peekqueue(Q[i]) < amin)
+                    {
+                        int pa = dequeue(Q[i]) - oldmin;
+                        int pb = rmap[i - numR];
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+                        CROSS_PRODUCT_INV;
+                        work->paired++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // shift out uneeded A's
+            j = 0;
+            for (i = (amin - oldmin); i < (2 * L); i++, j++)
+            {
+                vecCopy(Pa[i].X, Pa[j].X);
+                vecCopy(Pa[i].Z, Pa[j].Z);
+                vecCopy(work->Pa_inv[i], work->Pa_inv[j]);
+            }
+
+            // make new A's using the last two points
+            for (i = (2 * L) - (amin - oldmin); i < (2 * L); i++)
+            {
+                //giant step - use the addition formula for ECM
+                //Pa + Pd
+                //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+                //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+                //x- = [a-d]x
+                //z- = [a-d]z
+                vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+                vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+                vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+                //and Paprod
+                work->A += ainc;
+                work->ptadds++;
+
+                for (j = 0; j < VECLEN; j++)
+                {
+                    // extract this vec position so we can use mpz_invert.
+                    extract_bignum_from_vec_to_mpz(gmptmp, Pa[i].Z, j, NWORDS);
+
+                    // invert it
+                    mpz_invert(gmptmp, gmptmp, gmpn);
+
+                    // now put it back into Monty rep.
+                    mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+                    mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+
+                    // and stuff it back in the vector.
+                    insert_mpz_to_vec(work->Pa_inv[i], gmptmp, j);
+                }
+                vecmulmod_ptr(Pa[i].X, work->Pa_inv[i], work->Pa_inv[i], work->n, work->tt4, mdata);
+            }
+        }
+
+        q = s - a * ascale;
+        mq = q * -1;
+
+        do
+        {
+            if (mq < 0)
+            {
+                if (Q[numR - map[abs(mq)] - 1]->len > 0)
+                {
+                    ap = dequeue(Q[numR - map[abs(mq)] - 1]);
+
+                    if (ap == 0)
+                    {
+                        printf("dequeued %u from Q[%u](%d)\n", ap, numR - map[abs(mq)] - 1, mq);
+                        printf("a = %u\n", a);
+                        printf("ap = %u\n", ap);
+                        printf("s = %lu\n", s);
+                        fflush(stdout);
+                    }
+
+                    u = w * (a - ap) + q;
+
+                    if (u > umax)
+                    {
+                        int pa = ap - amin;
+                        int pb = abs(q);
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+
+                    }
+                    else
+                    {
+                        int pa = (a + ap) - 2 * amin;
+                        int pb = u;
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if (pa & 1)
+                        {
+                            pa = (pa - 1) / 2;
+                            pb -= D;
+                            if (pb < 0)
+                            {
+                                pa++;
+                                pb += 2 * D;
+                            }
+                        }
+                        else
+                        {
+                            pa >>= 1;
+                        }
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    work->paired++;
+                }
+                else
+                {
+                    if (q < 0)
+                    {
+                        enqueue(Q[numR - map[abs(q)] - 1], a);
+                    }
+                    else
+                    {
+                        enqueue(Q[numR + map[abs(q)]], a);
+                    }
+                    u = 0;
+                }
+            }
+            else if (mq > 0)
+            {
+                if (Q[numR + map[abs(mq)]]->len > 0)
+                {
+                    ap = dequeue(Q[numR + map[abs(mq)]]);
+
+                    if (ap == 0)
+                    {
+                        printf("dequeued %u from Q[%u](%d)\n", ap, numR + map[abs(mq)], mq);
+                        printf("a = %u\n", a);
+                        printf("ap = %u\n", ap);
+                        printf("s = %lu\n", s);
+                        fflush(stdout);
+                    }
+
+                    u = w * (a - ap) + q;
+
+                    if (u > umax)
+                    {
+                        int pa = ap - amin;
+                        int pb = abs(q);
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    else
+                    {
+                        int pa = (a + ap) - 2 * amin;
+                        int pb = u;
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if (pa & 1)
+                        {
+                            pa = (pa - 1) / 2;
+                            pb -= D;
+                            if (pb < 0)
+                            {
+                                pa++;
+                                pb += 2 * D;
+                            }
+                        }
+                        else
+                        {
+                            pa >>= 1;
+                        }
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    work->paired++;
+                }
+                else
+                {
+                    if (q < 0)
+                    {
+                        enqueue(Q[numR - map[abs(q)] - 1], a);
+                    }
+                    else
+                    {
+                        enqueue(Q[numR + map[abs(q)]], a);
+                    }
+                    u = 0;
+                }
+            }
+
+        } while (u > umax);
+
+    }
+
+    j = 0;
+
+    for (i = 0; i < numR; i++)
+    {
+        while (Q[i]->len > 0)
+        {
+            int pa = dequeue(Q[i]) - amin;
+            int pb = rmap[numR - i - 1];
+            // accumulate the cross product  (zimmerman syntax).
+            // page 342 in C&P
+            CROSS_PRODUCT_INV;
+            work->paired++;
+        }
+    }
+    for (i = numR; i < 2 * numR; i++)
+    {
+        while (Q[i]->len > 0)
+        {
+            int pa = dequeue(Q[i]) - amin;
+            int pb = rmap[i - numR];
+            // accumulate the cross product  (zimmerman syntax).
+            // page 342 in C&P
+            CROSS_PRODUCT_INV;
+            work->paired++;
+        }
+    }
+
+    work->amin = amin;
+    work->last_pid = pid;
+
+    mpz_clear(gmptmp);
+    mpz_clear(gmpn);
+
+    return;
 }
 
 int check_factor(mpz_t Z, mpz_t n, mpz_t f)

@@ -240,9 +240,11 @@ typedef struct
 	ecm_pt *Pa;
 	ecm_pt *Pd;
 	ecm_pt *Pad;
-	bignum **Paprod;	
+    bignum** Paprod;
+    bignum** Pa_inv;
 	bignum **Pbprod;
 	ecm_pt *Pb;
+    ecm_pt *Pdnorm;
 	bignum *stg2acc;
 	uint32_t stg1Add;
 	uint32_t stg1Doub;

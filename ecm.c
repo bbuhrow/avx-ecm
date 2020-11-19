@@ -3493,6 +3493,7 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     ecm_pt* Pb = work->Pb;
     ecm_pt* Pd;
     bignum* acc = work->stg2acc;
+    int lastMapID;
 
 
     if (verbose == 1)
@@ -3534,6 +3535,7 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     vecCopy(Pb[2].X, work->pt1.X);
     vecCopy(Pb[2].Z, work->pt1.Z);
 
+    lastMapID = 0;
     for (j = 3; j <= U * D; j++)
     {
         ecm_pt* P1 = &work->pt1;			// Sd - 1
@@ -3541,6 +3543,8 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
         ecm_pt* P3 = &work->pt2;			// Sd - 2
         ecm_pt* Pout = &Pb[rprime_map_U[j]];	// Sd
 
+        if (rprime_map_U[j] > 0)
+            lastMapID = rprime_map_U[j];
         // vecAdd:
         //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
         //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
@@ -3563,8 +3567,8 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
         vecmulmod_ptr(work->tt2, P3->X, Pout->Z, work->n, work->tt4, mdata);			//x * (U - V)^2
 
         //store Pb[j].X * Pb[j].Z as well
-        vecmulmod_ptr(Pout->X, Pout->Z, Pbprod[rprime_map_U[j]],
-            work->n, work->tt4, mdata);
+        //vecmulmod_ptr(Pout->X, Pout->Z, Pbprod[rprime_map_U[j]],
+        //    work->n, work->tt4, mdata);
 
         work->ptadds++;
 
@@ -3639,14 +3643,14 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
             printf("Pa[%d] = [%lu]Q\n", i, work->A + i * ainc);
 
         //and Paprod
-        vecmulmod_ptr(Pa[i].X, Pa[i].Z, Paprod[i], work->n, work->tt4, mdata);
+        //vecmulmod_ptr(Pa[i].X, Pa[i].Z, Paprod[i], work->n, work->tt4, mdata);
     }
 
     // here, we have temporary space for B, A is put into the unused Pbprod, and C is Pb.Z.
     // faster batch inversion in three phases, as follows:
     // first, set A1 = z1 and Ai = zi * A(i-1) so that Ai = prod(j=1,i,zj).
     vecCopy(Pb[1].Z, Pbprod[1]);
-    for (j = 2; j < U * (R + 1); j++)
+    for (j = 2; j <= lastMapID; j++)
     {
         vecmulmod_ptr(Pb[i].Z, Pbprod[i - 1], Pbprod[i], work->n, work->tt4, mdata);
     }
@@ -3660,40 +3664,51 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     bignum** B;
     B = (bignum **)malloc(Bmax * sizeof(bignum*));
 
-    printf("U * (R + 1) = %u, U * D = %u\n", U* (R + 1), U* D);
+    printf("U * (R + 1) = %u, U * D = %u, lastMapID = %d\n", U* (R + 1), U* D, lastMapID);
     for (j = 0; j < Bmax; j++)
     {
         B[j] = vecInit();
     }
 
     // now we have to take An out of monty rep so we can invert it.
-    for (j = 0; j < VECLEN; j++)
+    if (mdata->isMersenne == 0)
     {
-        work->tt1->data[j] = 1;
+        vecClear(work->tt1);
+        for (j = 0; j < VECLEN; j++)
+        {
+            work->tt1->data[j] = 1;
+        }
+        work->tt1->size = 1;
+        vecmulmod_ptr(Pbprod[lastMapID], work->tt1, B[lastMapID], work->n, work->tt4, mdata);
     }
-    work->tt1->size = 1;
-    vecmulmod_ptr(Pbprod[Bmax - 1], work->tt1, B[Bmax - 1], work->n, work->tt4, mdata);
+    else
+    {
+        vecCopy(Pbprod[lastMapID], B[lastMapID]);
+    }
 
     extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
     for (j = 0; j < VECLEN; j++)
     {
         // extract this vec position so we can use mpz_invert.
-        extract_bignum_from_vec_to_mpz(gmptmp, B[Bmax - 1], j, NWORDS);
+        extract_bignum_from_vec_to_mpz(gmptmp, B[lastMapID], j, NWORDS);
 
         // invert it
         mpz_invert(gmptmp, gmptmp, gmpn);
 
-        // now put it back into Monty rep.
-        mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
-        mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+        if (mdata->isMersenne == 0)
+        {
+            // now put it back into Monty rep.
+            mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+            mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+        }
 
         // and stuff it back in the vector.
-        insert_mpz_to_vec(B[Bmax - 1], gmptmp, j);
+        insert_mpz_to_vec(B[lastMapID], gmptmp, j);
     }
     
 
     // and continue.
-    for (i = Bmax - 2; i >= 0; i--)
+    for (i = lastMapID - 1; i >= 0; i--)
     {
         vecmulmod_ptr(Pb[i + 1].Z, B[i + 1], B[i], work->n, work->tt4, mdata);
         //B[i] = mulredcx(Pb[i + 1].Z, B[i + 1], work->n, rho);
@@ -3705,7 +3720,7 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     //Pb[1].Z = B[1];
     vecCopy(B[1], Pb[1].Z);
 
-    for (i = 2; i < Bmax; i++)
+    for (i = 2; i <= lastMapID; i++)
     {
         vecmulmod_ptr(B[i], work->Pbprod[i - 1], Pb[i].Z, work->n, work->tt4, mdata);
         //Pb[i].Z = mulredcx(B[i], work->Pbprod[i - 1], work->n, rho);
@@ -3714,7 +3729,7 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     // each phase takes n-1 multiplications so we have 3n-3 total multiplications
     // and one inversion mod N.
     // but we still have to combine with the X coord.
-    for (i = 1; i < Bmax; i++)
+    for (i = 1; i <= lastMapID; i++)
     {
         vecmulmod_ptr(Pb[i].X, Pb[i].Z, Pb[i].X, work->n, work->tt4, mdata);
         //Pb[i].X = mulredcx(Pb[i].X, Pb[i].Z, work->n, rho);
@@ -3722,24 +3737,42 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
 
     for (j = 0; j < Bmax; j++)
     {
-        vecClear(B[j]);
+        vecFree(B[j]);
     }
     free(B);
     
     // convert all Pa's the slow way for now
     for (i = 0; i < 2 * L; i++)
     {
+        if (mdata->isMersenne == 0)
+        {
+            vecClear(work->tt1);
+            for (j = 0; j < VECLEN; j++)
+            {
+                work->tt1->data[j] = 1;
+            }
+            work->tt1->size = 1;
+            vecmulmod_ptr(Pa[i].Z, work->tt1, work->tt2, work->n, work->tt4, mdata);
+        }
+        else
+        {
+            vecCopy(Pa[i].Z, work->tt2);
+        }
+
         for (j = 0; j < VECLEN; j++)
         {
             // extract this vec position so we can use mpz_invert.
-            extract_bignum_from_vec_to_mpz(gmptmp, Pa[i].Z, j, NWORDS);
+            extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
 
             // invert it
             mpz_invert(gmptmp, gmptmp, gmpn);
 
-            // now put it back into Monty rep.
-            mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
-            mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+            if (mdata->isMersenne == 0)
+            {
+                // now put it back into Monty rep.
+                mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+                mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+            }
 
             // and stuff it back in the vector.
             insert_mpz_to_vec(work->Pa_inv[i], gmptmp, j);
@@ -3833,7 +3866,6 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
                 {
                     if (peekqueue(Q[i]) < amin)
                     {
-                        //printf("(%u,%u)\n", (2 * dequeue(Q[i])), rmap[numR - i - 1]);
                         int pa = dequeue(Q[i]) - oldmin;
                         int pb = rmap[numR - i - 1];
 
@@ -3897,17 +3929,35 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
                 work->A += ainc;
                 work->ptadds++;
 
+                if (mdata->isMersenne == 0)
+                {
+                    vecClear(work->tt1);
+                    for (j = 0; j < VECLEN; j++)
+                    {
+                        work->tt1->data[j] = 1;
+                    }
+                    work->tt1->size = 1;
+                    vecmulmod_ptr(Pa[i].Z, work->tt1, work->tt2, work->n, work->tt4, mdata);
+                }
+                else
+                {
+                    vecCopy(Pa[i].Z, work->tt2);
+                }
+
                 for (j = 0; j < VECLEN; j++)
                 {
                     // extract this vec position so we can use mpz_invert.
-                    extract_bignum_from_vec_to_mpz(gmptmp, Pa[i].Z, j, NWORDS);
+                    extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
 
                     // invert it
                     mpz_invert(gmptmp, gmptmp, gmpn);
 
-                    // now put it back into Monty rep.
-                    mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
-                    mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+                    if (mdata->isMersenne == 0)
+                    {
+                        // now put it back into Monty rep.
+                        mpz_mul_2exp(gmptmp, gmptmp, MAXBITS);
+                        mpz_tdiv_r(gmptmp, gmptmp, gmpn);
+                    }
 
                     // and stuff it back in the vector.
                     insert_mpz_to_vec(work->Pa_inv[i], gmptmp, j);

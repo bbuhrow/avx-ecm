@@ -147,6 +147,8 @@ typedef struct
     int isMersenne;
 } monty;
 
+void print_vechexbignum(bignum* a, const char* pre);
+void print_vechexbignum52(bignum* a, const char* pre);
 void print_hexbignum(bignum *a, const char *pre);
 void print_hex(bignum *a, const char *pre);
 void print_vechex(base_t *a, int v, int n, const char *pre);

@@ -1010,8 +1010,8 @@ void ecm_work_init(ecm_work *work)
 		work->Pbprod[j] = vecInit();
 	}
 
-	work->marks = (uint8_t *)malloc(2 * U * D * sizeof(uint8_t));
-	work->nmarks = (uint8_t *)malloc(U * D * sizeof(uint8_t));
+	//work->marks = (uint8_t *)malloc(U * D * sizeof(uint8_t));
+	//work->nmarks = (uint8_t *)malloc(U * D * sizeof(uint8_t));
 	work->map = (uint32_t *)calloc(U * (D + 1) + 3, sizeof(uint32_t));
 
 	work->map[0] = 0;
@@ -2889,6 +2889,8 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 	return;
 }
 
+#define pdebug 2677127 //5647591
+
 #define CROSS_PRODUCT_INV \
 vecsubmod_ptr(work->Pa_inv[pa], Pb[rprime_map_U[pb]].X, work->tt1, mdata);          \
 vecmulmod_ptr(acc, work->tt1, acc, work->n, work->tt4, mdata);        
@@ -3190,7 +3192,7 @@ void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
         {
             if (flags[i] == 8)
             {
-                for (pa = 1; pa < U; pa++)
+                for (pa = 1; pa <= U; pa++)
                 {
                     if (((pa * 2310 - i) > 0) && (rprime_map_U[pa * 2310 - i] > 0))
                     {
@@ -4020,9 +4022,6 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
         if (rprime_map_U[j] > 0)
             lastMapID = rprime_map_U[j];
 
-        if (rprime_map_U[j] > 0)
-            work->Qmap[k++] = j;
-
         // vecAdd:
         //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
         //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
@@ -4060,7 +4059,6 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
         //print_vechex(Pout->Z->data, 0, NWORDS, str);
         //printf("rprime_map_U[%d] = %u\n", j, rprime_map_U[j]);
     }
-    work->Qmap[k++] = -1;
 
     //printf("B table generated to umax = %d\n", U * D);
 
@@ -4217,13 +4215,6 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     uint32_t ainc = 2 * D;
     uint32_t ascale = 2 * D;
     uint32_t amin = work->amin;
-    uint64_t s;
-    uint32_t a;
-    uint32_t* map = work->Qmap;
-    uint32_t* rmap = work->Qrmap;
-    uint32_t numR = R - 3;
-    uint32_t u, ap;
-    int q, mq;
     int debug = 0;
     int inverr;
 
@@ -4250,6 +4241,7 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
 
 
     int numranges = (STAGE2_MAX - STAGE1_MAX) / (U * D * 2) + 1;
+    int debugid = -1;
 
     while (PRIMES[pid] < amin * ascale)
     {
@@ -4259,8 +4251,8 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     if (verbose)
     {
         printf("commencing stage 2 at p=%lu, A=%u\n"
-            "w = %u, R = %u, L = %u, U = %d, umax = %u, amin = %u\n",
-            PRIMES[pid], amin * ascale, w, numR, L, U, umax, amin);
+            "w = %u, L = %u, U = %d, umax = %u, amin = %u\n",
+            PRIMES[pid], amin * ascale, w, L, U, umax, amin);
     }
 
     for (r = 0; r < numranges; r++)
@@ -4279,54 +4271,160 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
             }
             work->numprimes++;
             flags[PRIMES[pid] - amin * ascale] = U;
+            //if (PRIMES[pid] == pdebug)
+            //{
+            //    printf("flag set at location %lu in range %d with amin = %u\n", 
+            //        PRIMES[pid] - amin * ascale, r, amin);
+            //    debugid = PRIMES[pid] - amin * ascale;
+            //}
             pid++;
         }
 
-        int fid = 0;
-        for (i = U / 2; i > 0; i--)
+        if (1)
         {
-            for (j = i; j <= U - i; j++)
+            for (j = 0; j < U; j++)
             {
-                fid = j * ainc;
-                q = 0;
-                while (work->Qmap[q] < i * ainc) //0xffffffff)
+                for (i = 0; i < ainc; i++)
                 {
-                    //if (work->Qmap[q] > i * ainc)
-                    //    break;
-                    if (flags[fid - work->Qmap[q]] > 0)
+                    if (flags[j * ainc + i] == U)
                     {
-                        flags[fid - work->Qmap[q]] = j;
-                        flags[fid + work->Qmap[q]] = -1;
+                        // unpaired prime.  pair with the least possible mate
+                        // from the complimentary class that is up to a 
+                        // max of U/2 strides away (to keep within our umax).
+                        int thisclass = ainc - i;
+
+                        for (k = j + 1; k < U; k++)
+                        {
+                            thisclass = ainc * k - i;
+                            if ((thisclass > umax) || ((ainc * k + thisclass) > U * 2310))
+                                break;
+
+                            if (flags[ainc * k + thisclass] == U)
+                            {
+                                flags[j * ainc + i] = k;
+                                flags[k * ainc + thisclass] = -1;
+                                //printf("flag at %d paired with %d using pa=%d, pb=%d\n",
+                                //    j * 2310 + i, k * 2310 + thisclass, k,
+                                //    k * 2310 - (j * 2310 + i));
+                            }
+                        }
+
+                        // if nothing pairs, the prime is left to be paired with
+                        // the first available composite.
                     }
-                    q++;
+                }
+            }
+        }
+        else
+        {
+
+            int fid = 0;
+            int debugdone = 0;
+            for (i = U / 2; i > 0; i--)
+                //for (i = 1; i < U / 2; i++)
+            {
+                for (j = i; j <= U - i; j++)
+                {
+                    fid = j * ainc;
+                    int q = 0;
+                    while (work->Qmap[q] < i * ainc) //0xffffffff)
+                    {
+                        //if (work->Qmap[q] > i * ainc)
+                        //    break;
+                        //if (flags[fid - work->Qmap[q]] == U)
+                        if ((flags[fid - work->Qmap[q]] > 0) &&
+                            ((flags[fid + work->Qmap[q]] == U) || (flags[fid + work->Qmap[q]] <= 0)))
+                        {
+                            //if ((fid - work->Qmap[q]) == debugid)
+                            //{
+                            //    printf("flag at location %d set to pa=%d at amin=%u\n",
+                            //        fid - work->Qmap[q], j, amin);
+                            //    debugdone = 1;
+                            //}
+                            //else if ((fid + work->Qmap[q]) == debugid)
+                            //{
+                            //    printf("flag at location %d set to pa=-1(%d) at amin=%u\n",
+                            //        fid + work->Qmap[q], j, amin);
+                            //    debugdone = 1;
+                            //}
+
+                            flags[fid - work->Qmap[q]] = j;
+                            flags[fid + work->Qmap[q]] = -1;
+                        }
+                        q++;
+                    }
                 }
             }
         }
 
+        //if (debugdone)
+        //    debugid = -1;
+
         // do the cross multiplies
         for (i = 0; i < U * 2310; i++)
         {
+            //if ((i == 2473) && (amin == 1156))
+            //{
+            //    printf("processing flag %d=%d at amin=%u, p=%u\n", i, flags[i], amin, amin * ascale + i);
+            //}
+
             if (flags[i] == U)
             {
-                for (pa = 1; pa < U; pa++)
+                int found = 0;
+                //printf("searching for pair at location %u, amin = %u... ", i, amin);
+                for (pa = 1; pa <= U; pa++)
                 {
                     if (((pa * 2310 - i) > 0) && (rprime_map_U[pa * 2310 - i] > 0))
                     {
                         pb = pa * 2310 - i;
+                        //if (((amin * ascale + pa * 2310 - pb) == pdebug) ||
+                        //    (((amin * ascale + pa * 2310 + pb) == pdebug)))
+                        //{
+                        //    printf("special accumulating %lu with amin=%u, pa=%d, pb=%d\n", 
+                        //        (uint64_t)pdebug, amin, pa, pb);
+                        //}
                         CROSS_PRODUCT_INV;
                         work->paired++;
+                        found = 1;
                         break;
                     }
+                }
+                //if (found)
+                //{
+                //    printf("found at pa=%d, pb=%d\n", pa, pb);
+                //}
+                //else
+                //{
+                //    printf("special at location %u not found!\n", amin * ascale + i);
+                //}
+                if (!found)
+                {
+                    printf("unpaired location %u not found!\n", amin* ascale + i);
                 }
             }
             else if (flags[i] > 0)
             {
                 pa = flags[i];
                 pb = pa * 2310 - i;
+
+                //if ((i == 2473) && (amin == 1156))
+                //{
+                //    printf("pa=%d,pb=%d\n", pa, pb);
+                //    debugdone = 1;
+                //}
+
+                //if (((amin * ascale + pa * 2310 - pb) == pdebug) ||
+                //    (((amin * ascale + pa * 2310 + pb) == pdebug)))
+                //{
+                //    printf("accumulating %lu with amin=%u, pa=%d, pb=%d\n", 
+                //        (uint64_t)pdebug, amin, pa, pb);
+                //}
                 CROSS_PRODUCT_INV;
                 work->paired++;
             }
         }
+
+        
 
         // more A's
         // shift out uneeded A's
@@ -4363,6 +4461,14 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     pid = NUM_P;
 
 #else
+
+    uint64_t s;
+    uint32_t a;
+    uint32_t* map = work->Qmap;
+    uint32_t* rmap = work->Qrmap;
+    uint32_t numR = R - 3;
+    uint32_t u, ap;
+    int q, mq;
 
     if (verbose)
     {
@@ -4771,6 +4877,495 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     }
 
 #endif
+
+    work->amin = amin;
+    work->last_pid = pid;
+
+    mpz_clear(gmptmp);
+    mpz_clear(gmptmp2);
+    mpz_clear(gmpn);
+
+    return;
+}
+
+void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+{
+    // run Montgomery's PAIR algorithm.  
+    uint32_t D = work->D;
+    uint32_t R = work->R;
+    uint32_t w = D;
+    uint32_t U = work->U;
+    uint32_t L = work->L;
+    uint32_t umax = U * w;
+    int i, j, k, pid;
+
+    uint32_t ainc = D;
+    uint32_t ascale = D;
+    uint32_t amin = work->amin = (STAGE1_MAX + w) / ascale;
+    uint32_t s;
+    uint32_t a;
+
+    uint32_t numR;
+    uint32_t u, ap;
+    int q, mq;
+    int debug = 0;
+    int inverr;
+    int foundDuringInv = 0;
+    int doneIfFoundDuringInv = 0;
+
+    uint32_t* rprime_map_U = work->map;
+    ecm_pt* Pa = work->Pa;
+    bignum** Paprod = work->Paprod;
+    bignum** Pbprod = work->Pbprod;
+    ecm_pt* Pb = work->Pb;
+    ecm_pt* Pd = work->Pdnorm;
+    bignum* acc = work->stg2acc;
+    int lastMapID;
+    char str[1024];
+
+    mpz_t gmptmp, gmptmp2, gmpn;
+    mpz_init(gmptmp);
+    mpz_init(gmptmp2);
+    mpz_init(gmpn);
+
+    if (verbose == 1)
+        printf("\n");
+
+    work->paired = 0;
+    work->numprimes = 0;
+    work->ptadds = 0;
+    work->stg1Add = 0;
+    work->stg1Doub = 0;
+
+    //stage 2 init
+    //Q = P = result of stage 1
+    //compute [d]Q for 0 < d <= D
+
+    // [1]Q
+    vecCopy(P->Z, Pb[1].Z);
+    vecCopy(P->X, Pb[1].X);
+
+    // [2]Q
+    vecCopy(P->Z, Pb[2].Z);
+    vecCopy(P->X, Pb[2].X);
+    vecaddsubmod_ptr(P->X, P->Z, work->sum1, work->diff1, mdata);
+    vec_duplicate(mdata, work, work->sum1, work->diff1, &Pb[2]);
+
+    //printf("init: D = %d, ainc = %d, ascale = %d, U = %d, L = %d\n", D, ainc, ascale, U, L);
+
+    // [3]Q, [4]Q, ... [D]Q
+    // because of the way we pick 'a' and 'D', we'll only need the 479 points that 
+    // are relatively prime to D.  We need to keep a few points during the running 
+    // computation i.e., ... j, j-1, j-2. The lookup table rprime_map maps the 
+    // integer j into the relatively prime indices that we store. We also store
+    // points 1, 2, and D, and storage point 0 is used as scratch for a total of
+    // 483 stored points.
+
+    vecCopy(Pb[1].X, work->pt2.X);
+    vecCopy(Pb[1].Z, work->pt2.Z);
+    vecCopy(Pb[2].X, work->pt1.X);
+    vecCopy(Pb[2].Z, work->pt1.Z);
+
+    lastMapID = 0;
+    k = 0;
+    for (j = 3; j <= U * D; j++)
+    {
+        ecm_pt* P1 = &work->pt1;			// Sd - 1
+        ecm_pt* P2 = &Pb[1];				// S1
+        ecm_pt* P3 = &work->pt2;			// Sd - 2
+        ecm_pt* Pout = &Pb[rprime_map_U[j]];	// Sd
+
+        if (rprime_map_U[j] > 0)
+            lastMapID = rprime_map_U[j];
+
+        // vecAdd:
+        //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+        //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+        //x- = original x
+        //z- = original z
+
+        // compute Sd from Sd-1 + S1, requiring Sd-1 - S1 = Sd-2
+        vecaddsubmod_ptr(P1->X, P1->Z, work->sum1, work->diff1, mdata);
+        vecaddsubmod_ptr(P2->X, P2->Z, work->sum2, work->diff2, mdata);
+
+        vecmulmod_ptr(work->diff1, work->sum2, work->tt1, work->n, work->tt4, mdata);	//U
+        vecmulmod_ptr(work->sum1, work->diff2, work->tt2, work->n, work->tt4, mdata);	//V
+
+        vecaddsubmod_ptr(work->tt1, work->tt2, Pout->X, Pout->Z, mdata);		        //U +/- V
+        vecsqrmod_ptr(Pout->X, work->tt1, work->n, work->tt4, mdata);					//(U + V)^2
+        vecsqrmod_ptr(Pout->Z, work->tt2, work->n, work->tt4, mdata);					//(U - V)^2
+
+        // if gcd(j,D) != 1, Pout maps to scratch space (Pb[0])
+        vecmulmod_ptr(work->tt1, P3->Z, Pout->X, work->n, work->tt4, mdata);			//Z * (U + V)^2
+        vecmulmod_ptr(work->tt2, P3->X, Pout->Z, work->n, work->tt4, mdata);			//x * (U - V)^2
+
+        //store Pb[j].X * Pb[j].Z as well
+        //vecmulmod_ptr(Pout->X, Pout->Z, Pbprod[rprime_map_U[j]],
+        //    work->n, work->tt4, mdata);
+
+        work->ptadds++;
+
+        // advance
+        vecCopy(P1->X, P3->X);
+        vecCopy(P1->Z, P3->Z);
+        vecCopy(Pout->X, P1->X);
+        vecCopy(Pout->Z, P1->Z);
+
+        //sprintf(str, "Pb[%d].Z: ", rprime_map_U[j]);
+        //print_vechex(Pout->Z->data, 0, NWORDS, str);
+        //printf("rprime_map_U[%d] = %u\n", j, rprime_map_U[j]);
+    }
+
+    //printf("B table generated to umax = %d\n", U * D);
+
+    // Pd = [2w]Q
+    vecCopy(P->Z, Pd->Z);
+    vecCopy(P->X, Pd->X);
+    next_pt_vec(mdata, work, Pd, ainc);
+
+    //first a value: first multiple of D greater than B1
+    work->A = amin * ascale;
+
+    //initialize info needed for giant step
+    vecCopy(P->Z, Pa[0].Z);
+    vecCopy(P->X, Pa[0].X);
+    next_pt_vec(mdata, work, &Pa[0], work->A);
+
+    if (verbose & (debug == 2))
+        printf("Pa[0] = [%lu]Q\n", work->A);
+
+    vecCopy(P->Z, work->Pad->Z);
+    vecCopy(P->X, work->Pad->X);
+    next_pt_vec(mdata, work, work->Pad, work->A - ainc);
+
+    if (verbose & (debug == 2))
+        printf("Pad = [%lu]Q\n", work->A - ainc);
+
+    vecaddmod_ptr(Pa[0].X, Pa[0].Z, work->sum1, mdata);
+    vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, mdata);
+    vecsubmod_ptr(Pa[0].X, Pa[0].Z, work->diff1, mdata);
+    vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, mdata);
+    vec_add(mdata, work, work->Pad, &Pa[1]);
+
+    work->A += ainc;
+    if (verbose & (debug == 2))
+        printf("Pa[1] = [%lu]Q\n", work->A);
+
+    for (i = 2; i < 2 * L; i++)
+    {
+        //giant step - use the addition formula for ECM
+        //Pa + Pd
+        //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+        //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+        //x- = [a-d]x
+        //z- = [a-d]z
+        vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+        vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+        vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+        work->A += ainc;
+        work->ptadds++;
+        if (verbose & (debug == 2))
+            printf("Pa[%d] = [%lu]Q\n", i, work->A);
+    }
+
+    // initialize accumulator
+    vecCopy(mdata->one, acc);
+
+    batch_invert_pt_inplace(Pb, Pbprod, mdata, work, lastMapID + 1);
+
+    // convert all Pa's the slow way for now
+    if (1)
+    {
+        batch_invert_pt_to_bignum(Pa, work->Pa_inv, Paprod, mdata, work, 0, 2 * L);
+    }
+    else
+    {
+        extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
+        for (i = 0; i < 2 * L; i++)
+        {
+            if (mdata->isMersenne == 0)
+            {
+                vecClear(work->tt1);
+                for (j = 0; j < VECLEN; j++)
+                {
+                    work->tt1->data[j] = 1;
+                }
+                work->tt1->size = 1;
+                vecmulmod_ptr(Pa[i].Z, work->tt1, work->tt2, work->n, work->tt4, mdata);
+            }
+            else
+            {
+                vecCopy(Pa[i].Z, work->tt2);
+            }
+
+            for (j = 0; j < VECLEN; j++)
+            {
+                // extract this vec position so we can use mpz_invert.
+                extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+
+                // invert it
+                inverr = mpz_invert(gmptmp2, gmptmp, gmpn);
+
+                if (inverr == 0)
+                {
+                    //extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+                    //printf("inversion error\n");
+                    //gmp_printf("tried to invert %Zd mod %Zd in stage2init Pa\n", gmptmp, gmpn);
+                    mpz_gcd(gmptmp, gmptmp, gmpn);
+                    //gmp_printf("the GCD is %Zd\n", gmptmp);
+                    int k;
+                    for (k = 0; k < NWORDS; k++)
+                        work->stg2acc->data[k * VECLEN + j] = 0;
+                    insert_mpz_to_vec(work->stg2acc, gmptmp, j);
+                    foundDuringInv = 1;
+                }
+
+                if (mdata->isMersenne == 0)
+                {
+                    // now put it back into Monty rep.
+                    mpz_mul_2exp(gmptmp2, gmptmp2, MAXBITS);
+                    mpz_tdiv_r(gmptmp2, gmptmp2, gmpn);
+                }
+
+                // and stuff into the Pa.Zinv vector.
+                insert_mpz_to_vec(work->Pa_inv[i], gmptmp2, j);
+            }
+            // put X/Z into Pa_inv
+            vecmulmod_ptr(Pa[i].X, work->Pa_inv[i], work->Pa_inv[i], work->n, work->tt4, mdata);
+        }
+    }
+
+    if (doneIfFoundDuringInv && foundDuringInv)
+    {
+        work->last_pid = -1;
+
+        mpz_clear(gmptmp);
+        mpz_clear(gmptmp2);
+        mpz_clear(gmpn);
+
+        return;
+    }
+
+    mpz_clear(gmptmp);
+    mpz_clear(gmptmp2);
+    mpz_clear(gmpn);
+
+    if (verbose & (debug == 2))
+        printf("A table generated to 2 * L = %d\n", 2 * L);
+
+    return;
+}
+
+void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+{
+    // run Montgomery's PAIR algorithm.  
+    uint32_t D = work->D;
+    uint32_t R = work->R;
+    uint32_t w = D;
+    uint32_t U = work->U;
+    uint32_t L = work->L;
+    uint32_t umax = U * w;
+    int i, j, k, r, pid;
+    Queue_t** Q = work->Q;
+    uint32_t ainc = D;
+    uint32_t ascale = D;
+    uint32_t amin = work->amin;
+    int debug = 0;
+    int inverr;
+
+    uint32_t* rprime_map_U = work->map;
+    ecm_pt* Pa = work->Pa;      // non-inverted
+    ecm_pt* Pb = work->Pb;      // inverted
+    ecm_pt* Pd = work->Pdnorm;  // non-inverted Pd
+    bignum* acc = work->stg2acc;
+    int flags[16 * 1155];
+
+    mpz_t gmptmp, gmptmp2, gmpn;
+    mpz_init(gmptmp);
+    mpz_init(gmptmp2);
+    mpz_init(gmpn);
+
+    extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
+
+    if (verbose == 1)
+        printf("\n");
+
+    pid = work->last_pid;
+
+    int numranges = (STAGE2_MAX - STAGE1_MAX) / (L * D) + 1;
+    int debugid = -1;
+
+    while (PRIMES[pid] < amin * ascale)
+    {
+        pid++;
+    }
+
+    if (verbose)
+    {
+        printf("commencing %d pair-ranges in stage 2 at p=%lu, A=%u\n"
+            "w = %u, L = %u, U = %d, umax = %u, amin = %u, ainc = %u\n",
+            numranges, PRIMES[pid], amin * ascale, w, L, U, umax, amin, ainc);
+    }
+
+    for (r = 0; r < numranges; r++)
+    {
+        int pa, pb;
+
+        // make the pair-map for this range
+        memset(flags, 0, 16 * 1155 * sizeof(int));
+
+        //printf("flags initialized for range %d\n", r);
+
+        while ((pid < NUM_P) && ((PRIMES[pid] - amin * ascale) < 16 * 1155) && (PRIMES[pid] < STAGE2_MAX))
+        {
+            if ((verbose == 1) && ((pid & 65535) == 0))
+            {
+                printf("accumulating prime %lu\r", PRIMES[pid]);
+                fflush(stdout);
+            }
+            work->numprimes++;
+            flags[PRIMES[pid] - amin * ascale] = L;
+            pid++;
+        }
+
+        //printf("done sieving for range %d at p=%lu\n", r, PRIMES[pid]);
+        uint32_t pairs = 0;
+        for (j = 0; j < L; j++)
+        {
+            for (i = 0; i < ainc; i++)
+            {
+                if (flags[j * ainc + i] == L)
+                {
+                    // unpaired prime.  pair with the least possible mate
+                    // from the complimentary class that within our umax.
+                    int thisclass;
+
+                    for (k = j + 1; k < L; k++)
+                    {
+                        thisclass = ainc * k - i;
+                            
+                        if ((thisclass > umax) || ((ainc * k + thisclass) > L * D))
+                            break;
+
+                        if (rprime_map_U[thisclass] == 0)
+                        {
+                            printf("class %d doesn't exist!\n", thisclass);
+                        }
+
+                        if (flags[ainc * k + thisclass] == L)
+                        {
+                            flags[j * ainc + i] = k;
+                            flags[k * ainc + thisclass] = -1;
+                            pairs++;
+                        }
+                    }
+
+                    // if nothing pairs, the prime is left to be paired with
+                    // the first available composite.
+                }
+            }
+        }
+
+        //printf("done pairing for range %d, found %u pairs\n", r, pairs);
+
+        // do the cross multiplies
+        for (i = 0; i < L * D; i++)
+        {
+            if (flags[i] == L)
+            {
+                int found = 0;
+                //printf("searching for composite pair for unpaired flag %d at amin = %u\n", i, amin);
+                for (pa = 1; pa <= L; pa++)
+                {
+                    if (((pa * (int)D - i) > 0))// && (rprime_map_U[pa * (int)D - i] > 0))
+                    {
+                        pb = pa * D - i;
+
+                        if (pb > umax)
+                        {
+                            //printf("unpaired flag %d: no valid pb at amin=%u pa=%d,pb=%d\n", 
+                            //    i, amin, pa, pb);
+                            continue;
+                        }
+
+                        //printf("unpaired flag %d: paired at amin=%u: pa=%d,pb=%d\n",
+                        //    i, amin, pa, pb);
+                        //if (rprime_map_U[pa * D - i] > (U * R))
+                        //    printf("mapped pb (%d) too big? \n", rprime_map_U[pa * D - i]);
+
+                        //printf("taking unpaired cross-product of pa=%d, pb=%d\n", pa, pb);
+                        //fflush(stdout);
+
+                        CROSS_PRODUCT_INV;
+                        work->paired++;
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    printf("unpaired location %d not paired at amin = %u!\n", i, amin);
+                }
+            }
+            else if (flags[i] > 0)
+            {
+                pa = flags[i];
+                pb = pa * D - i;
+
+                if (rprime_map_U[pb] > (U * R))
+                    printf("mapped pb (%d) too big? \n", rprime_map_U[pb]);
+
+                if (rprime_map_U[pb] == 0)
+                {
+                    printf("class %d doesn't exist!\n", pb);
+                    continue;
+                }
+
+                //printf("taking cross-product of pa=%d, pb=%d\n", pa, pb);
+                //fflush(stdout);
+
+                CROSS_PRODUCT_INV;
+                work->paired++;
+            }
+        }
+
+        //printf("done multiplying for range %d\n", r);
+
+        // more A's
+        // shift out uneeded A's
+        for (i = 0; i < (2 * L) - L; i++)
+        {
+            vecCopy(Pa[i + U].X, Pa[i].X);
+            vecCopy(Pa[i + U].Z, Pa[i].Z);
+            vecCopy(work->Pa_inv[i + U], work->Pa_inv[i]);
+        }
+
+        // make new A's using the last two points
+        for (i = (2 * L) - L; i < (2 * L); i++)
+        {
+            //printf("new batch of %d A's\n", (amin - oldmin));
+            //giant step - use the addition formula for ECM
+            //Pa + Pd
+            //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+            //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+            //x- = [a-d]x
+            //z- = [a-d]z
+            vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+            vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+            vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+            work->A += ainc;
+            work->ptadds++;
+            amin++;
+        }
+
+        batch_invert_pt_to_bignum(Pa, work->Pa_inv, work->Paprod, mdata, work,
+            (2 * L) - L, (2 * L));
+    }
+
+    pid = NUM_P;
+
 
     work->amin = amin;
     work->last_pid = pid;

@@ -355,7 +355,7 @@ int main(int argc, char **argv)
 	monty *montyconst;
 	int threads;    
 	int pid = getpid();
-    uint64_t limit;
+    uint64_t limit, sigma = 0;
     int size_n;
     str_t input;
 	int isMersenne = 0, forceNoMersenne = 0;
@@ -371,7 +371,7 @@ int main(int argc, char **argv)
 
     if (argc < 4)
     {
-        printf("usage: avx-ecm $input $numcurves $B1 [$threads] [$B2]\n");
+        printf("usage: avx-ecm $input $numcurves $B1 [$threads] [$B2] [$sigma]\n");
         exit(1);
     }
 	
@@ -531,7 +531,7 @@ int main(int argc, char **argv)
     //SOE_THREADS = 2;
 
     DO_STAGE2 = 1;
-    if (argc == 6)
+    if (argc >= 6)
 	{
 		STAGE2_MAX = strtoull(argv[5], NULL, 10);
 
@@ -541,6 +541,12 @@ int main(int argc, char **argv)
 			STAGE2_MAX = STAGE1_MAX;
 		}
 	}
+
+    if (argc >= 7)
+    {
+        sigma = strtoull(argv[6], NULL, 10);
+        printf("starting with sigma = %lu\n", sigma);
+    }
         
 
     if (STAGE1_MAX < 1000)
@@ -694,6 +700,21 @@ int main(int argc, char **argv)
         tdata[i].tid = i;
 		tdata[i].lcg_state = hash64(stopt.tv_usec + i) + hash64(pid); // 
         tdata[i].total_threads = threads;
+        
+        if (sigma > 0)
+        {
+            for (j = 0; j < VECLEN; j++)
+            {
+                tdata[i].sigma[j] = sigma + VECLEN * i + j;
+            }
+        }
+        else
+        {
+            for (j = 0; j < VECLEN; j++)
+            {
+                tdata[i].sigma[j] = 0;
+            }
+        }
     }
 
 	gettimeofday(&stopt, NULL);

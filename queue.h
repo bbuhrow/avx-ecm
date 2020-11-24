@@ -44,7 +44,7 @@ typedef struct
 } Queue_t;
 
 void clearQueue(Queue_t *Q);
-uint32_t peekqueue(Queue_t *Q);
+uint32_t peekqueue(Queue_t *Q, int offset);
 uint32_t dequeue(Queue_t *Q);
 void enqueue(Queue_t *Q, uint32_t e);
 Queue_t * newQueue(uint32_t sz);

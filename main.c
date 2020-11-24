@@ -700,6 +700,17 @@ int main(int argc, char **argv)
         tdata[i].tid = i;
 		tdata[i].lcg_state = hash64(stopt.tv_usec + i) + hash64(pid); // 
         tdata[i].total_threads = threads;
+        if (i == 0)
+        {
+            tdata[i].pairmap_v = (uint32_t*)calloc(PRIME_RANGE, sizeof(uint32_t));
+            tdata[i].pairmap_u = (uint32_t*)calloc(PRIME_RANGE, sizeof(uint32_t));
+        }
+        else
+        {
+            tdata[i].pairmap_v = tdata[0].pairmap_v;
+            tdata[i].pairmap_u = tdata[0].pairmap_u;
+        }
+
         
         if (sigma > 0)
         {
@@ -757,14 +768,27 @@ void thread_init(thread_data_t *tdata, monty *mdata)
     tdata->work = (ecm_work *)malloc(sizeof(ecm_work));
     tdata->P = (ecm_pt *)malloc(sizeof(ecm_pt));
     tdata->sigma = (uint64_t *)malloc(VECLEN * sizeof(uint64_t));
-	uint32_t D = tdata->work->D = 1155;
-	tdata->work->R = 480 + 3;
+    uint32_t D = tdata->work->D = 1155;
+    int i, j;
+
+    for (j = 0, i = 0; i < 2 * D; i++)
+    {
+        if (spGCD(i, 2 * D) == 1)
+        {
+            j++;
+        }
+    }
+
+    tdata->work->R = j + 3;
 
 	// decide on the stage 2 parameters.  Larger U means
 	// more memory and more setup overhead, but more prime pairs.
 	// Smaller U means the opposite.  find a good balance.
-	static double pairing[4] = { 0.7283, 0.6446, 0.5794, 0.5401 };
-	static double adds[4];
+    // these pairing ratios are estimates based on Montgomery's
+    // Pair algorithm Table w assuming w = 1155, for different umax.
+	static double pairing[6] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266};
+    int U[7] = { 2, 3, 4, 6, 8, 12 };
+	double adds[6];
 	double best = 99999999999.;
 	int bestU = 4;
 
@@ -774,20 +798,16 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 		tdata->work->R = 48 + 3;
 	}
 
-	adds[0] = (double)D * 1.0;
-	adds[1] = (double)D * 2.0;
-	adds[2] = (double)D * 4.0;
-	adds[3] = (double)D * 8.0;
-
-	int i;
-	for (i = 1; i < 4; i++)
+	for (i = 0; i < 6; i++)
 	{
-		int numadds = (STAGE2_MAX - STAGE1_MAX) / (2 * D);
+        adds[i] = (double)D * (double)U[i];
+		int numadds = (STAGE2_MAX - STAGE1_MAX) / (D);
 		double addcost = 6.0 * ((double)numadds + adds[i]);
+        // estimate number of prime pairs times 1 (1 mul per pair)
 		double paircost = ((double)STAGE2_MAX / log((double)STAGE2_MAX) -
-			(double)STAGE1_MAX / log((double)STAGE1_MAX)) * pairing[i] * 2.0;
+			(double)STAGE1_MAX / log((double)STAGE1_MAX)) * pairing[i] * 1.0;
 
-		//printf("estimating %u primes paired\n", (uint32_t)((double)STAGE2_MAX / log((double)STAGE2_MAX) -
+		//printf("estimating %u primes to pair\n", (uint32_t)((double)STAGE2_MAX / log((double)STAGE2_MAX) -
 		//	(double)STAGE1_MAX / log((double)STAGE1_MAX)));
 		//printf("%d adds + %d setup adds\n", numadds, (int)adds[i]);
 		//printf("addcost = %f\n", addcost);
@@ -797,12 +817,12 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 		if ((addcost + paircost) < best)
 		{
 			best = addcost + paircost;
-			bestU = 1 << i;
+			bestU = U[i];
 		}
 	}
 
-	tdata->work->U = bestU;
-	tdata->work->L = bestU * 2;
+    tdata->work->U = 8; // bestU;
+	tdata->work->L = tdata->work->U * 2;
 
     ecm_work_init(tdata->work);
     ecm_pt_init(tdata->P);

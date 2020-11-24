@@ -284,6 +284,9 @@ typedef struct
     uint32_t total_threads;
     uint32_t phase_done;
     uint32_t ecm_phase;     // 0 == build curve, 1 == stage 1, 2 == stage 2
+    uint32_t *pairmap_v;
+    uint32_t *pairmap_u;
+    uint32_t pairmap_steps;
 	int save_b1;
 } thread_data_t;
 

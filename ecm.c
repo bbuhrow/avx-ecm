@@ -73,6 +73,10 @@ void ecm_stage2_init(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, in
 void ecm_stage2_pair(ecm_pt *P, monty *mdata, ecm_work *work, base_t *primes, int verbose);
 void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose);
 void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose);
+void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t* pm_v, uint32_t* pm_u,
+    ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose);
+uint32_t pair(uint32_t *pm_v, uint32_t *pm_u, 
+    ecm_work* work, uint64_t* primes, uint64_t B1, uint64_t B2);
 
 base_t spGCD(base_t x, base_t y)
 {
@@ -896,6 +900,7 @@ void ecm_stage2_init_work_fcn(void *vptr)
     thread_data_t *udata = (thread_data_t *)tpdata->user_data;
     uint32_t tid = tpdata->tindex;
 
+    //ecm_stage2_init_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
     ecm_stage2_init_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
 
     return;
@@ -908,6 +913,8 @@ void ecm_stage2_work_fcn(void *vptr)
     uint32_t tid = tpdata->tindex;
 
     ecm_stage2_pair_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
+    //ecm_stage2_pair_inv_new(udata[tid].pairmap_steps, udata[tid].pairmap_v, udata[tid].pairmap_u,
+    //    udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
 
     return;
 }
@@ -1042,12 +1049,12 @@ void ecm_work_init(ecm_work *work)
 
 	}
 
-	work->Qmap = (uint32_t *)malloc(U * 2 * D * sizeof(uint32_t));
-	work->Qrmap = (uint32_t *)malloc(D * sizeof(uint32_t));
+	work->Qmap = (uint32_t *)malloc(2 * D * sizeof(uint32_t));
+	work->Qrmap = (uint32_t *)malloc(2 * D * sizeof(uint32_t));
 
-	for (j = 0, i = 0; i < D; i++)
+	for (j = 0, i = 0; i < 2 * D; i++)
 	{
-		if (spGCD(i, D) == 1)
+		if (spGCD(i, 2 * D) == 1)
 		{
 			work->Qmap[i] = j;
 			work->Qrmap[j++] = i;
@@ -1057,18 +1064,19 @@ void ecm_work_init(ecm_work *work)
 			work->Qmap[i] = (uint32_t)-1;
 		}
 	}
+    //work->R = j;
 
-	for (i = j; i < D; i++)
+	for (i = j; i < 2 * D; i++)
 	{
 		work->Qrmap[i] = (uint32_t)-1;
 	}
 
-	work->Q = (Queue_t **)malloc(2 * j * sizeof(Queue_t *));
-	for (i = 0; i < 2 * j; i++)
+    printf("allocating %d queues for pairing\n", j);
+	work->Q = (Queue_t **)malloc(j * sizeof(Queue_t *));
+	for (i = 0; i < j; i++)
 	{
 		work->Q[i] = newQueue(D);
 	}
-
 
 	/*
 	j = 0;
@@ -1095,7 +1103,7 @@ void ecm_work_init(ecm_work *work)
 
 void ecm_work_free(ecm_work *work)
 {
-	int i;
+	int i, j;
 	uint32_t U = work->U;
 	uint32_t L = work->L;
 	uint32_t D = work->D;
@@ -1140,7 +1148,15 @@ void ecm_work_free(ecm_work *work)
 		vecFree(work->Pbprod[i]);
 	}
 
-	for (i = 0; i < 2 * (R - 3); i++)
+    for (j = 0, i = 0; i < 2 * D; i++)
+    {
+        if (spGCD(i, 2 * D) == 1)
+        {
+            j++;
+        }
+    }
+
+	for (i = 0; i < j; i++) //2 * (R - 3); i++)
 	{
 		clearQueue(work->Q[i]);
 		free(work->Q[i]);
@@ -2442,6 +2458,8 @@ void vececm(thread_data_t *tdata)
         if (DO_STAGE2)
         {
             uint64_t last_p = PRIMES[tdata[0].work->last_pid];
+            uint64_t rangemin = STAGE1_MAX;
+            uint64_t rangemax = MIN(STAGE2_MAX, rangemin + PRIME_RANGE);
 
             // parallel stage 2
             gettimeofday(&startt, NULL);
@@ -2488,6 +2506,12 @@ void vececm(thread_data_t *tdata)
 					printf("found %lu primes in range [%lu : %lu]\n", NUM_P, P_MIN, P_MAX);
 				}
 
+                tdata[0].pairmap_steps = pair(tdata[0].pairmap_v, tdata[0].pairmap_u, 
+                    tdata[0].work, PRIMES, rangemin, rangemax);
+                rangemin = rangemax;
+                rangemax = MIN(STAGE2_MAX, rangemin + PRIME_RANGE);
+                //exit(1);
+
                 for (i = 0; i < threads; i++)
                 {
                     tdata[i].phase_done = 0;
@@ -2513,8 +2537,8 @@ void vececm(thread_data_t *tdata)
             gettimeofday(&stopt, NULL);
             t_time = my_difftime(&startt, &stopt);
             printf("Stage 2 took %1.4f seconds\n", t_time);
-			printf("performed %d pair-multiplies for %lu primes in stage 2\n", 
-				tdata[0].work->paired, tdata[0].work->numprimes);
+			//printf("performed %d pair-multiplies for %lu primes in stage 2\n", 
+			//	tdata[0].work->paired, tdata[0].work->numprimes);
             printf("performed %u point-additions and %u point-doubles in stage 2\n",
 				tdata[0].work->ptadds + tdata[0].work->stg1Add, tdata[0].work->stg1Doub);
 
@@ -3728,9 +3752,9 @@ void batch_invert_pt_inplace(ecm_pt* pts_to_Zinvert,
 
         if (inverr == 0)
         {
-            //extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
-            //printf("inversion error\n");
-            //gmp_printf("tried to invert %Zd mod %Zd in stage2init Pb\n", gmptmp, gmpn);
+            extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+            printf("inversion error\n");
+            gmp_printf("tried to invert %Zd mod %Zd in stage2init Pb\n", gmptmp, gmpn);
             mpz_gcd(gmptmp, gmptmp, gmpn);
             //gmp_printf("the GCD is %Zd\n", gmptmp);
             int k;
@@ -3860,11 +3884,11 @@ void batch_invert_pt_to_bignum(ecm_pt* pts_to_Zinvert, bignum **out,
 
         if (inverr == 0)
         {
-            //extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
-            //printf("inversion error\n");
-            //gmp_printf("tried to invert %Zd mod %Zd in stage2init Pb\n", gmptmp, gmpn);
+            extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+            printf("inversion error\n");
+            gmp_printf("tried to invert %Zd mod %Zd in stage2init Pb\n", gmptmp, gmpn);
             mpz_gcd(gmptmp, gmptmp, gmpn);
-            //gmp_printf("the GCD is %Zd\n", gmptmp);
+            gmp_printf("the GCD is %Zd\n", gmptmp);
             int k;
             for (k = 0; k < NWORDS; k++)
                 work->stg2acc->data[k * VECLEN + j] = 0;
@@ -3934,7 +3958,61 @@ void batch_invert_pt_to_bignum(ecm_pt* pts_to_Zinvert, bignum **out,
 
 }
 
-void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+// test cases for generic input at B1=1e6, B2=100B1:
+// n = 142946323174762557214361604817789197531833590620956958433836799929503392464892596183803921
+//11919771003873180376
+//827341355533811391
+//6409678826612327146
+//13778091190526084667
+//10019108749973911965
+//10593445070074576128
+//16327347202299112611
+//13768494887674349585
+//17303758977955016383
+//2123812563661387803
+//2330438305415445111
+//12942218412106273630
+//5427613898610684157
+//13727269399001077418
+//3087408422684406072
+//8338236510647016635
+//18232185847183255223
+//5070879816975737551
+//9793972958987869750
+//1683842010542383008
+//16668736769625151751
+//11148653366342049109
+//6736437364141805734
+//8860111571919296085
+//15708855786729755459
+//4263089024287634346
+//10705409183485702771
+//5104801995378138195
+//9551766994217130412
+//17824508581606173922
+//4444245868135963544
+//14755844915853888743
+//4749513976499976002
+//3933740986814285076
+//2498288573977543008
+//18051693002182940438
+//421313926042840093
+//1659254194582388863
+//13762123388521706810
+//1318769405167840394
+//14979751960240161797
+//4989253092822783329
+//14628970911725975539
+//4759771957864370849
+//17870405635651283010
+//472060146
+//3776270672
+//3954243165
+//2576580518    <-- B2 needs prime 29628881
+//416265588
+
+
+void ecm_stage2_init_inv_good(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
 {
     // run Montgomery's PAIR algorithm.  
     uint32_t D = work->D;
@@ -4201,7 +4279,7 @@ void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     return;
 }
 
-void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+void ecm_stage2_pair_inv_good(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
 {
     // run Montgomery's PAIR algorithm.  
     uint32_t D = work->D;
@@ -4888,7 +4966,7 @@ void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes
     return;
 }
 
-void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+void ecm_stage2_init_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
 {
     // run Montgomery's PAIR algorithm.  
     uint32_t D = work->D;
@@ -4898,10 +4976,7 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     uint32_t L = work->L;
     uint32_t umax = U * w;
     int i, j, k, pid;
-
-    uint32_t ainc = D;
-    uint32_t ascale = D;
-    uint32_t amin = work->amin = (STAGE1_MAX + w) / ascale;
+    uint32_t amin = work->amin = (STAGE1_MAX + w) / (2 * w);
     uint32_t s;
     uint32_t a;
 
@@ -5013,18 +5088,22 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
 
         //sprintf(str, "Pb[%d].Z: ", rprime_map_U[j]);
         //print_vechex(Pout->Z->data, 0, NWORDS, str);
-        //printf("rprime_map_U[%d] = %u\n", j, rprime_map_U[j]);
+        if (verbose & (debug == 2))
+            printf("rprime_map_U[%d] = %u\n", j, rprime_map_U[j]);
     }
 
     //printf("B table generated to umax = %d\n", U * D);
 
-    // Pd = [2w]Q
+    // Pd = [w]Q
     vecCopy(P->Z, Pd->Z);
     vecCopy(P->X, Pd->X);
-    next_pt_vec(mdata, work, Pd, ainc);
+    next_pt_vec(mdata, work, Pd, 2 * w);
+
+    if (verbose & (debug == 2))
+        printf("Pd = [%lu]Q\n", 2 * w);
 
     //first a value: first multiple of D greater than B1
-    work->A = amin * ascale;
+    work->A = amin * w * 2;
 
     //initialize info needed for giant step
     vecCopy(P->Z, Pa[0].Z);
@@ -5036,10 +5115,10 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
 
     vecCopy(P->Z, work->Pad->Z);
     vecCopy(P->X, work->Pad->X);
-    next_pt_vec(mdata, work, work->Pad, work->A - ainc);
+    next_pt_vec(mdata, work, work->Pad, work->A - 2 * w);
 
     if (verbose & (debug == 2))
-        printf("Pad = [%lu]Q\n", work->A - ainc);
+        printf("Pad = [%lu]Q\n", work->A - 2 * w);
 
     vecaddmod_ptr(Pa[0].X, Pa[0].Z, work->sum1, mdata);
     vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, mdata);
@@ -5047,7 +5126,7 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, mdata);
     vec_add(mdata, work, work->Pad, &Pa[1]);
 
-    work->A += ainc;
+    work->A += w;
     if (verbose & (debug == 2))
         printf("Pa[1] = [%lu]Q\n", work->A);
 
@@ -5063,7 +5142,7 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
         vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
         vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
 
-        work->A += ainc;
+        work->A += 2 * w;
         work->ptadds++;
         if (verbose & (debug == 2))
             printf("Pa[%d] = [%lu]Q\n", i, work->A);
@@ -5082,7 +5161,7 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     else
     {
         extract_bignum_from_vec_to_mpz(gmpn, mdata->n, 0, NWORDS);
-        for (i = 0; i < 2 * L; i++)
+        for (i = 0; i < L; i++)
         {
             if (mdata->isMersenne == 0)
             {
@@ -5152,12 +5231,12 @@ void ecm_stage2_init_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     mpz_clear(gmpn);
 
     if (verbose & (debug == 2))
-        printf("A table generated to 2 * L = %d\n", 2 * L);
+        printf("A table generated to L = %d\n", 2 * L);
 
     return;
 }
 
-void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+void ecm_stage2_pair_inv(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
 {
     // run Montgomery's PAIR algorithm.  
     uint32_t D = work->D;
@@ -5168,8 +5247,8 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     uint32_t umax = U * w;
     int i, j, k, r, pid;
     Queue_t** Q = work->Q;
-    uint32_t ainc = D;
-    uint32_t ascale = D;
+    uint32_t ainc = 2 * D;
+    uint32_t ascale = 2 * D;
     uint32_t amin = work->amin;
     int debug = 0;
     int inverr;
@@ -5179,7 +5258,7 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     ecm_pt* Pb = work->Pb;      // inverted
     ecm_pt* Pd = work->Pdnorm;  // non-inverted Pd
     bignum* acc = work->stg2acc;
-    int flags[16 * 1155];
+    int flags[8 * 2 * 1155];
 
     mpz_t gmptmp, gmptmp2, gmpn;
     mpz_init(gmptmp);
@@ -5193,7 +5272,10 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
 
     pid = work->last_pid;
 
-    int numranges = (STAGE2_MAX - STAGE1_MAX) / (L * D) + 1;
+#if 1
+
+
+    int numranges = (STAGE2_MAX - STAGE1_MAX) / (U * D * 2) + 1;
     int debugid = -1;
 
     while (PRIMES[pid] < amin * ascale)
@@ -5203,21 +5285,19 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
 
     if (verbose)
     {
-        printf("commencing %d pair-ranges in stage 2 at p=%lu, A=%u\n"
-            "w = %u, L = %u, U = %d, umax = %u, amin = %u, ainc = %u\n",
-            numranges, PRIMES[pid], amin * ascale, w, L, U, umax, amin, ainc);
+        printf("commencing stage 2 at p=%lu, A=%u\n"
+            "w = %u, L = %u, U = %d, umax = %u, amin = %u\n",
+            PRIMES[pid], amin * ascale, w, L, U, umax, amin);
     }
 
     for (r = 0; r < numranges; r++)
     {
         int pa, pb;
 
-        // make the pair-map for this range
-        memset(flags, 0, 16 * 1155 * sizeof(int));
+        // make the pair map for this range
+        memset(flags, 0, U * 2310 * sizeof(int));
 
-        //printf("flags initialized for range %d\n", r);
-
-        while ((pid < NUM_P) && ((PRIMES[pid] - amin * ascale) < 16 * 1155) && (PRIMES[pid] < STAGE2_MAX))
+        while ((PRIMES[pid] - amin * ascale) < U * 2310)
         {
             if ((verbose == 1) && ((pid & 65535) == 0))
             {
@@ -5225,116 +5305,165 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
                 fflush(stdout);
             }
             work->numprimes++;
-            flags[PRIMES[pid] - amin * ascale] = L;
+            flags[PRIMES[pid] - amin * ascale] = U;
+            //if (PRIMES[pid] == pdebug)
+            //{
+            //    printf("flag set at location %lu in range %d with amin = %u\n", 
+            //        PRIMES[pid] - amin * ascale, r, amin);
+            //    debugid = PRIMES[pid] - amin * ascale;
+            //}
             pid++;
         }
 
-        //printf("done sieving for range %d at p=%lu\n", r, PRIMES[pid]);
-        uint32_t pairs = 0;
-        for (j = 0; j < L; j++)
+        if (1)
         {
-            for (i = 0; i < ainc; i++)
+            for (j = 0; j < U; j++)
             {
-                if (flags[j * ainc + i] == L)
+                for (i = 0; i < ainc; i++)
                 {
-                    // unpaired prime.  pair with the least possible mate
-                    // from the complimentary class that within our umax.
-                    int thisclass;
-
-                    for (k = j + 1; k < L; k++)
+                    if (flags[j * ainc + i] == U)
                     {
-                        thisclass = ainc * k - i;
-                            
-                        if ((thisclass > umax) || ((ainc * k + thisclass) > L * D))
-                            break;
+                        // unpaired prime.  pair with the least possible mate
+                        // from the complimentary class that is up to a 
+                        // max of U/2 strides away (to keep within our umax).
+                        int thisclass = ainc - i;
 
-                        if (rprime_map_U[thisclass] == 0)
+                        for (k = j + 1; k < U; k++)
                         {
-                            printf("class %d doesn't exist!\n", thisclass);
+                            thisclass = ainc * k - i;
+                            if ((thisclass > umax) || ((ainc * k + thisclass) > U * 2310))
+                                break;
+
+                            if (flags[ainc * k + thisclass] == U)
+                            {
+                                flags[j * ainc + i] = k;
+                                flags[k * ainc + thisclass] = -1;
+                                //printf("flag at %d paired with %d using pa=%d, pb=%d\n",
+                                //    j * 2310 + i, k * 2310 + thisclass, k,
+                                //    k * 2310 - (j * 2310 + i));
+                            }
                         }
 
-                        if (flags[ainc * k + thisclass] == L)
-                        {
-                            flags[j * ainc + i] = k;
-                            flags[k * ainc + thisclass] = -1;
-                            pairs++;
-                        }
+                        // if nothing pairs, the prime is left to be paired with
+                        // the first available composite.
                     }
+                }
+            }
+        }
+        else
+        {
 
-                    // if nothing pairs, the prime is left to be paired with
-                    // the first available composite.
+            int fid = 0;
+            int debugdone = 0;
+            for (i = U / 2; i > 0; i--)
+                //for (i = 1; i < U / 2; i++)
+            {
+                for (j = i; j <= U - i; j++)
+                {
+                    fid = j * ainc;
+                    int q = 0;
+                    while (work->Qmap[q] < i * ainc) //0xffffffff)
+                    {
+                        //if (work->Qmap[q] > i * ainc)
+                        //    break;
+                        //if (flags[fid - work->Qmap[q]] == U)
+                        if ((flags[fid - work->Qmap[q]] > 0) &&
+                            ((flags[fid + work->Qmap[q]] == U) || (flags[fid + work->Qmap[q]] <= 0)))
+                        {
+                            //if ((fid - work->Qmap[q]) == debugid)
+                            //{
+                            //    printf("flag at location %d set to pa=%d at amin=%u\n",
+                            //        fid - work->Qmap[q], j, amin);
+                            //    debugdone = 1;
+                            //}
+                            //else if ((fid + work->Qmap[q]) == debugid)
+                            //{
+                            //    printf("flag at location %d set to pa=-1(%d) at amin=%u\n",
+                            //        fid + work->Qmap[q], j, amin);
+                            //    debugdone = 1;
+                            //}
+
+                            flags[fid - work->Qmap[q]] = j;
+                            flags[fid + work->Qmap[q]] = -1;
+                        }
+                        q++;
+                    }
                 }
             }
         }
 
-        //printf("done pairing for range %d, found %u pairs\n", r, pairs);
+        //if (debugdone)
+        //    debugid = -1;
 
         // do the cross multiplies
-        for (i = 0; i < L * D; i++)
+        for (i = 0; i < U * 2310; i++)
         {
-            if (flags[i] == L)
+            //if ((i == 2473) && (amin == 1156))
+            //{
+            //    printf("processing flag %d=%d at amin=%u, p=%u\n", i, flags[i], amin, amin * ascale + i);
+            //}
+
+            if (flags[i] == U)
             {
                 int found = 0;
-                //printf("searching for composite pair for unpaired flag %d at amin = %u\n", i, amin);
-                for (pa = 1; pa <= L; pa++)
+                //printf("searching for pair at location %u, amin = %u... ", i, amin);
+                for (pa = 1; pa <= U; pa++)
                 {
-                    if (((pa * (int)D - i) > 0))// && (rprime_map_U[pa * (int)D - i] > 0))
+                    if (((pa * 2310 - i) > 0) && (rprime_map_U[pa * 2310 - i] > 0))
                     {
-                        pb = pa * D - i;
-
-                        if (pb > umax)
-                        {
-                            //printf("unpaired flag %d: no valid pb at amin=%u pa=%d,pb=%d\n", 
-                            //    i, amin, pa, pb);
-                            continue;
-                        }
-
-                        //printf("unpaired flag %d: paired at amin=%u: pa=%d,pb=%d\n",
-                        //    i, amin, pa, pb);
-                        //if (rprime_map_U[pa * D - i] > (U * R))
-                        //    printf("mapped pb (%d) too big? \n", rprime_map_U[pa * D - i]);
-
-                        //printf("taking unpaired cross-product of pa=%d, pb=%d\n", pa, pb);
-                        //fflush(stdout);
-
+                        pb = pa * 2310 - i;
+                        //if (((amin * ascale + pa * 2310 - pb) == pdebug) ||
+                        //    (((amin * ascale + pa * 2310 + pb) == pdebug)))
+                        //{
+                        //    printf("special accumulating %lu with amin=%u, pa=%d, pb=%d\n", 
+                        //        (uint64_t)pdebug, amin, pa, pb);
+                        //}
                         CROSS_PRODUCT_INV;
                         work->paired++;
                         found = 1;
                         break;
                     }
                 }
+                //if (found)
+                //{
+                //    printf("found at pa=%d, pb=%d\n", pa, pb);
+                //}
+                //else
+                //{
+                //    printf("special at location %u not found!\n", amin * ascale + i);
+                //}
                 if (!found)
                 {
-                    printf("unpaired location %d not paired at amin = %u!\n", i, amin);
+                    printf("unpaired location %u not found!\n", amin * ascale + i);
                 }
             }
             else if (flags[i] > 0)
             {
                 pa = flags[i];
-                pb = pa * D - i;
+                pb = pa * 2310 - i;
 
-                if (rprime_map_U[pb] > (U * R))
-                    printf("mapped pb (%d) too big? \n", rprime_map_U[pb]);
+                //if ((i == 2473) && (amin == 1156))
+                //{
+                //    printf("pa=%d,pb=%d\n", pa, pb);
+                //    debugdone = 1;
+                //}
 
-                if (rprime_map_U[pb] == 0)
-                {
-                    printf("class %d doesn't exist!\n", pb);
-                    continue;
-                }
-
-                //printf("taking cross-product of pa=%d, pb=%d\n", pa, pb);
-                //fflush(stdout);
-
+                //if (((amin * ascale + pa * 2310 - pb) == pdebug) ||
+                //    (((amin * ascale + pa * 2310 + pb) == pdebug)))
+                //{
+                //    printf("accumulating %lu with amin=%u, pa=%d, pb=%d\n", 
+                //        (uint64_t)pdebug, amin, pa, pb);
+                //}
                 CROSS_PRODUCT_INV;
                 work->paired++;
             }
         }
 
-        //printf("done multiplying for range %d\n", r);
+
 
         // more A's
         // shift out uneeded A's
-        for (i = 0; i < (2 * L) - L; i++)
+        for (i = 0; i < (2 * L) - U; i++)
         {
             vecCopy(Pa[i + U].X, Pa[i].X);
             vecCopy(Pa[i + U].Z, Pa[i].Z);
@@ -5342,7 +5471,7 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
         }
 
         // make new A's using the last two points
-        for (i = (2 * L) - L; i < (2 * L); i++)
+        for (i = (2 * L) - U; i < (2 * L); i++)
         {
             //printf("new batch of %d A's\n", (amin - oldmin));
             //giant step - use the addition formula for ECM
@@ -5361,11 +5490,428 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
         }
 
         batch_invert_pt_to_bignum(Pa, work->Pa_inv, work->Paprod, mdata, work,
-            (2 * L) - L, (2 * L));
+            (2 * L) - U, (2 * L));
     }
 
     pid = NUM_P;
 
+#else
+
+    uint64_t s;
+    uint32_t a;
+    uint32_t* map = work->Qmap;
+    uint32_t* rmap = work->Qrmap;
+    uint32_t numR = R - 3;
+    uint32_t u, ap;
+    int q, mq;
+
+    if (verbose)
+    {
+        printf("commencing stage 2 at p=%lu, A=%u\n"
+            "w = %u, R = %u, L = %u, U = %d, umax = %u, amin = %u\n",
+            PRIMES[pid], amin * ascale, w, numR, L, U, umax, amin);
+    }
+
+    while ((pid < NUM_P) && (PRIMES[pid] < STAGE2_MAX))
+    {
+        work->numprimes++;
+
+        s = PRIMES[pid++];
+        a = (s + w) / ascale;
+
+        if ((verbose == 1) && ((pid & 65535) == 0))
+        {
+            printf("accumulating prime %lu\r", PRIMES[pid]);
+            fflush(stdout);
+        }
+
+        // new range of a
+        while (a >= (amin + L))
+        {
+            uint32_t oldmin = amin;
+
+            amin = amin + L - U;
+
+            for (i = 0; i < numR; i++)
+            {
+                while (Q[i]->len > 0)
+                {
+                    if (peekqueue(Q[i]) < amin)
+                    {
+                        int pa = dequeue(Q[i]) - oldmin;
+                        int pb = rmap[numR - i - 1];
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+                        CROSS_PRODUCT_INV;
+
+                        work->paired++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            for (i = numR; i < 2 * numR; i++)
+            {
+                while (Q[i]->len > 0)
+                {
+                    if (peekqueue(Q[i]) < amin)
+                    {
+                        int pa = dequeue(Q[i]) - oldmin;
+                        int pb = rmap[i - numR];
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+                        CROSS_PRODUCT_INV;
+                        work->paired++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // shift out uneeded A's
+            j = 0;
+            for (i = (amin - oldmin); i < (2 * L); i++, j++)
+            {
+                vecCopy(Pa[i].X, Pa[j].X);
+                vecCopy(Pa[i].Z, Pa[j].Z);
+                vecCopy(work->Pa_inv[i], work->Pa_inv[j]);
+            }
+
+            // make new A's using the last two points
+            for (i = (2 * L) - (amin - oldmin); i < (2 * L); i++)
+            {
+                //printf("new batch of %d A's\n", (amin - oldmin));
+                //giant step - use the addition formula for ECM
+                //Pa + Pd
+                //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+                //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+                //x- = [a-d]x
+                //z- = [a-d]z
+                vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+                vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+                vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+                work->A += ainc;
+                work->ptadds++;
+
+                if (0)
+                {
+                    // make X/Z with this new A
+                    if (mdata->isMersenne == 0)
+                    {
+                        vecClear(work->tt1);
+                        for (j = 0; j < VECLEN; j++)
+                        {
+                            work->tt1->data[j] = 1;
+                        }
+                        work->tt1->size = 1;
+                        vecmulmod_ptr(Pa[i].Z, work->tt1, work->tt2, work->n, work->tt4, mdata);
+                    }
+                    else
+                    {
+                        vecCopy(Pa[i].Z, work->tt2);
+                    }
+
+                    for (j = 0; j < VECLEN; j++)
+                    {
+                        // extract this vec position so we can use mpz_invert.
+                        extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+
+                        // invert it
+                        inverr = mpz_invert(gmptmp2, gmptmp, gmpn);
+
+                        if (inverr == 0)
+                        {
+                            //extract_bignum_from_vec_to_mpz(gmptmp, work->tt2, j, NWORDS);
+                            //printf("inversion error\n");
+                            //gmp_printf("tried to invert %Zd mod %Zd in stage2pair\n", gmptmp, gmpn);
+                            mpz_gcd(gmptmp, gmptmp, gmpn);
+                            //gmp_printf("the GCD is %Zd\n", gmptmp);
+                            int k;
+                            for (k = 0; k < NWORDS; k++)
+                                work->stg2acc->data[k * VECLEN + j] = 0;
+                            insert_mpz_to_vec(work->stg2acc, gmptmp, j);
+
+                            //work->last_pid = NUM_P;
+                            //
+                            //mpz_clear(gmptmp);
+                            //mpz_clear(gmptmp2);
+                            //mpz_clear(gmpn);
+                            //
+                            //return;
+                        }
+
+                        if (mdata->isMersenne == 0)
+                        {
+                            // now put it back into Monty rep.
+                            mpz_mul_2exp(gmptmp2, gmptmp2, MAXBITS);
+                            mpz_tdiv_r(gmptmp2, gmptmp2, gmpn);
+                        }
+
+                        // and stuff it back in the vector.
+                        insert_mpz_to_vec(work->Pa_inv[i], gmptmp2, j);
+                    }
+                    vecmulmod_ptr(Pa[i].X, work->Pa_inv[i], work->Pa_inv[i], work->n, work->tt4, mdata);
+                }
+            }
+
+            batch_invert_pt_to_bignum(Pa, work->Pa_inv, work->Paprod, mdata, work,
+                (2 * L) - (amin - oldmin), (2 * L));
+        }
+
+        q = s - a * ascale;
+        mq = q * -1;
+
+        do
+        {
+            if (mq < 0)
+            {
+                if (Q[numR - map[abs(mq)] - 1]->len > 0)
+                {
+                    ap = dequeue(Q[numR - map[abs(mq)] - 1]);
+
+                    if (ap == 0)
+                    {
+                        printf("dequeued %u from Q[%u](%d)\n", ap, numR - map[abs(mq)] - 1, mq);
+                        printf("a = %u\n", a);
+                        printf("ap = %u\n", ap);
+                        printf("s = %lu\n", s);
+                        fflush(stdout);
+                    }
+
+                    u = w * (a - ap) + q;
+
+                    if (u > umax)
+                    {
+                        int pa = ap - amin;
+                        int pb = abs(q);
+
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+
+                    }
+                    else
+                    {
+                        int pa = (a + ap) - 2 * amin;
+                        int pb = u;
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if (pa & 1)
+                        {
+                            pa = (pa - 1) / 2;
+                            pb -= D;
+                            if (pb < 0)
+                            {
+                                pa++;
+                                pb += 2 * D;
+                            }
+                        }
+                        else
+                        {
+                            pa >>= 1;
+                        }
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    work->paired++;
+                }
+                else
+                {
+                    if (q < 0)
+                    {
+                        enqueue(Q[numR - map[abs(q)] - 1], a);
+                    }
+                    else
+                    {
+                        enqueue(Q[numR + map[abs(q)]], a);
+                    }
+                    u = 0;
+                }
+            }
+            else if (mq > 0)
+            {
+                if (Q[numR + map[abs(mq)]]->len > 0)
+                {
+                    ap = dequeue(Q[numR + map[abs(mq)]]);
+
+                    if (ap == 0)
+                    {
+                        printf("dequeued %u from Q[%u](%d)\n", ap, numR + map[abs(mq)], mq);
+                        printf("a = %u\n", a);
+                        printf("ap = %u\n", ap);
+                        printf("s = %lu\n", s);
+                        fflush(stdout);
+                    }
+
+                    u = w * (a - ap) + q;
+
+                    if (u > umax)
+                    {
+                        int pa = ap - amin;
+                        int pb = abs(q);
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    else
+                    {
+                        int pa = (a + ap) - 2 * amin;
+                        int pb = u;
+                        // accumulate the cross product  (zimmerman syntax).
+                        // page 342 in C&P
+
+                        if (pa & 1)
+                        {
+                            pa = (pa - 1) / 2;
+                            pb -= D;
+                            if (pb < 0)
+                            {
+                                pa++;
+                                pb += 2 * D;
+                            }
+                        }
+                        else
+                        {
+                            pa >>= 1;
+                        }
+
+                        if ((pb < 0) || (pb >= (U * D)))
+                        {
+                            printf("invalid pb = %d\n", pb);
+                        }
+
+                        if (rprime_map_U[pb] == 0)
+                        {
+                            printf("invalid distance %d\n", pb);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        if ((pa < 0) || (pa >= 2 * L))
+                        {
+                            printf("invalid Pa[%d]\n", pa);
+                            printf("accumulate (%u,%u)\n", pa, pb); fflush(stdout);
+                            exit(-1);
+                        }
+
+                        CROSS_PRODUCT_INV;
+                    }
+                    work->paired++;
+                }
+                else
+                {
+                    if (q < 0)
+                    {
+                        enqueue(Q[numR - map[abs(q)] - 1], a);
+                    }
+                    else
+                    {
+                        enqueue(Q[numR + map[abs(q)]], a);
+                    }
+                    u = 0;
+                }
+            }
+
+        } while (u > umax);
+
+    }
+
+    j = 0;
+
+    for (i = 0; i < numR; i++)
+    {
+        while (Q[i]->len > 0)
+        {
+            int pa = dequeue(Q[i]) - amin;
+            int pb = rmap[numR - i - 1];
+            // accumulate the cross product  (zimmerman syntax).
+            // page 342 in C&P
+            CROSS_PRODUCT_INV;
+            work->paired++;
+        }
+    }
+    for (i = numR; i < 2 * numR; i++)
+    {
+        while (Q[i]->len > 0)
+        {
+            int pa = dequeue(Q[i]) - amin;
+            int pb = rmap[i - numR];
+            // accumulate the cross product  (zimmerman syntax).
+            // page 342 in C&P
+            CROSS_PRODUCT_INV;
+            work->paired++;
+        }
+    }
+
+#endif
 
     work->amin = amin;
     work->last_pid = pid;
@@ -5373,6 +5919,112 @@ void ecm_stage2_pair_inv_test(ecm_pt* P, monty* mdata, ecm_work* work, base_t* p
     mpz_clear(gmptmp);
     mpz_clear(gmptmp2);
     mpz_clear(gmpn);
+
+    return;
+}
+
+void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pairmap_u,
+    ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
+{
+    // run Montgomery's PAIR algorithm.  
+    uint32_t w = work->D;
+    uint32_t U = work->U;
+    uint32_t L = work->L;
+    uint32_t umax = U * w;
+    int i, j, k, r, pid;
+    uint32_t amin = work->amin;
+    int debug = 0;
+    int inverr;
+    int mapid;
+
+    uint32_t* rprime_map_U = work->map;
+    ecm_pt* Pa = work->Pa;      // non-inverted
+    ecm_pt* Pb = work->Pb;      // inverted
+    ecm_pt* Pd = work->Pdnorm;  // non-inverted Pd
+    bignum* acc = work->stg2acc;
+
+    if (verbose == 1)
+        printf("\n");
+
+    if (verbose)
+    {
+        printf("commencing stage 2 at A=%u\n"
+            "w = %u, L = %u, U = %d, umax = %u, amin = %u\n",
+            2 * amin * w, w, L, U, umax, amin);
+    }
+
+    for (mapid = 0; mapid < pairmap_steps; mapid++)
+    {
+        int pa, pb;
+
+        if ((verbose == 1) && ((mapid & 65535) == 0))
+        {
+            printf("pairmap step %u\r", mapid);
+            fflush(stdout);
+        }
+
+        if ((pairmap_u[mapid] == 0) && (pairmap_v[mapid] == 0))
+        {
+            //printf("next A batch\n");
+            // more A's
+            // shift out uneeded A's
+            for (i = 0; i < 2 * L - U; i++)
+            {
+                vecCopy(Pa[i + U].X, Pa[i].X);
+                vecCopy(Pa[i + U].Z, Pa[i].Z);
+                vecCopy(work->Pa_inv[i + U], work->Pa_inv[i]);
+            }
+
+            // make new A's using the last two points
+            for (i = 2 * L - U; i < 2 * L; i++)
+            {
+                //printf("new batch of %d A's\n", (amin - oldmin));
+                //giant step - use the addition formula for ECM
+                //Pa + Pd
+                //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+                //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+                //x- = [a-d]x
+                //z- = [a-d]z
+                vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+                vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+                vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+                work->A += 2 * w;
+                work->ptadds++;
+            }
+            amin += U;
+            //printf("amin is now %u\n", amin);
+
+            batch_invert_pt_to_bignum(Pa, work->Pa_inv, work->Paprod, mdata, work, 2 * L - U, 2 * L);
+        }
+        else
+        {
+            pa = pairmap_v[mapid];
+            pb = pairmap_u[mapid];
+
+            if ((((amin + pa) * 2 * w - pb) == 29628881) ||
+                (((amin + pa) * 2 * w + pb) == 29628881))
+            {
+                printf("accumulating pa=%d,pb=%d, p-=%u, p+=%u\n", pa, pb,
+                    ((amin + pa) * 2 * w - pb), ((amin + pa) * 2 * w + pb));
+            }
+
+            if (rprime_map_U[pb] == 0)
+                printf("pb=%d doesn't exist\n", pb);
+            
+            //printf("accumulate %dw +/- %d => %lu:%lu\n", pa, pb,
+            //    ((amin + pa) * 2 * w - pb), ((amin + pa) * 2 * w + pb));
+            CROSS_PRODUCT_INV;
+            work->paired++;
+        }
+
+        
+    }
+
+    pid = NUM_P;
+
+    work->amin = amin;
+    work->last_pid = pid;
 
     return;
 }
@@ -5394,4 +6046,326 @@ int check_factor(mpz_t Z, mpz_t n, mpz_t f)
 	return 0;
 }
 
+void addflag(uint8_t* flags, int loc)
+{
+    //printf("adding flag to %u\n", loc); fflush(stdout);
+    //if (flags[loc] == 1)
+    //    printf("duplicate location %u\n", loc);
+    flags[loc] = 1;
+    return;
+}
+
+uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u, 
+    ecm_work* work, uint64_t* primes, uint64_t B1, uint64_t B2)
+{
+    int i, j, k, pid = 0;
+    int w = work->D;
+    int U = work->U;
+    int L = work->L;
+    int R = work->R - 3;
+    int umax = w * U;
+    int q, mq;
+    uint64_t amin = (B1 + w) / (2 * w);
+    uint64_t a, s, ap, u;
+    uint32_t pairs = 0;
+    uint32_t nump = 0;
+    uint32_t mapid = 0;
+    uint8_t* flags;
+    int printpairs = 0;
+    int testcoverage = 1;
+
+    // gives an index of a queue given a residue mod w
+    //printf("Qmap: \n");
+    //for (i = 0; i < w; i++)
+    //{
+    //    printf("%u\n", work->Qmap[i]);
+    //}
+
+    // contains the value of q given an index
+    //printf("Qrmap: \n");
+    //for (i = 0; i < w; i++)
+    //{
+    //    printf("%u\n", work->Qrmap[i]);
+    //}
+
+    //printf("w = %u\n", w);
+    //printf("U = %u\n", U);
+    //printf("L = %u\n", L);
+    //printf("R = %u\n", R);
+    //printf("amin = %u\n", amin);
+    //printf("umax = %u\n", umax);
+
+    if (testcoverage)
+        flags = (uint8_t*)calloc((10000 + B2), sizeof(uint8_t));
+    printf("commencing pair on range %lu:%lu\n", B1, B2);
+    while (primes[pid] < B1) { pid++; }
+
+    while ((pid < NUM_P) && (primes[pid] < B2))
+    {
+        s = primes[pid];
+        a = (s + w) / (2 * w);
+        nump++;
+
+        //printf("s, a: %lu, %lu\n", s, a);
+
+        while (a >= (amin + L))
+        {
+            int oldmin = amin;
+            amin = amin + L - U;
+            //printf("amin now %u\n", amin);
+            for (i = 0; i < R; i++)
+            {
+                int len = work->Q[i]->len;
+
+                if (work->Qrmap[i] >= w)
+                {
+                    q = 2 * w - work->Qrmap[i];
+                    for (j = 0; j < len; j++)
+                    {
+                        ap = dequeue(work->Q[i]);
+                        if ((uint32_t)ap < amin)
+                        {
+                            pairmap_v[mapid] = 2 * (ap - oldmin);
+                            pairmap_u[mapid] = q;
+                            mapid++;
+
+                            if (testcoverage)
+                            {
+                                addflag(flags, (2 * ap) * w + q);
+                                addflag(flags, (2 * ap) * w - q);
+                            }
+                            if (printpairs)
+                                printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                                    ap, q,
+                                    2 * ap * w - q,
+                                    2 * ap * w + q);
+                            pairs++;
+                        }
+                        else
+                        {
+                            enqueue(work->Q[i], ap);
+                        }
+                    }
+                }
+                else
+                {
+                    for (j = 0; j < len; j++)
+                    {
+                        ap = dequeue(work->Q[i]);
+                        if ((uint32_t)ap < amin)
+                        {
+                            pairmap_v[mapid] = 2 * (ap - oldmin);
+                            pairmap_u[mapid] = work->Qrmap[i];
+                            mapid++;
+
+                            if (testcoverage)
+                            {
+                                addflag(flags, (2 * ap) * w + work->Qrmap[i]);
+                                addflag(flags, (2 * ap) * w - work->Qrmap[i]);
+                            }
+                            if (printpairs)
+                                printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                                    ap, work->Qrmap[i],
+                                    2 * ap * w - work->Qrmap[i],
+                                    2 * ap * w + work->Qrmap[i]);
+                            pairs++;
+                        }
+                        else
+                        {
+                            enqueue(work->Q[i], ap);
+                        }
+                    }
+                }
+            }
+            pairmap_u[mapid] = 0;
+            pairmap_v[mapid] = 0;
+            mapid++;
+        }
+
+        q = s - 2 * a * w;
+        if (q < 0)
+            mq = abs(q);
+        else
+            mq = 2 * w - q;
+
+       // printf("q, mq: %d, %d\n", q, mq);
+
+        do
+        {
+            if (work->Q[work->Qmap[mq]]->len > 0)
+            {
+                ap = dequeue(work->Q[work->Qmap[mq]]);
+                if (q < 0)
+                    u = w * (a - ap) - abs(q);
+                else
+                    u = w * (a - ap) + q;
+
+                if (u > umax)
+                {
+                    if (q < 0)
+                    {
+                        int qq = abs(q);
+
+                        pairmap_v[mapid] = 2 * (ap - amin);
+                        pairmap_u[mapid] = qq;
+                        mapid++;
+
+                        if (testcoverage)
+                        {
+                            addflag(flags, (2 * ap) * w + qq);
+                            addflag(flags, (2 * ap) * w - qq);
+                        }
+                        if (printpairs)
+                            printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                                ap, q, 
+                                2 * ap * w - qq, 
+                                2 * ap * w + qq);
+                    }
+                    else
+                    {
+                        int qq = q;
+
+                        if (qq >= w)
+                            qq = 2 * w - qq;
+
+                        pairmap_v[mapid] = 2 * (ap - amin);
+                        pairmap_u[mapid] = qq;
+                        mapid++;
+
+                        if (testcoverage)
+                        {
+                            addflag(flags, (2 * ap) * w + qq);
+                            addflag(flags, (2 * ap) * w - qq);
+                        }
+                        if (printpairs)
+                            printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                                ap, q, 
+                                2 * ap * w - qq,
+                                2 * ap * w + qq);
+                    }
+                    pairs++;
+                }
+                else
+                {
+                    pairmap_v[mapid] = a + ap - 2 * amin;
+                    pairmap_u[mapid] = u;
+                    mapid++;
+
+                    if (testcoverage)
+                    {
+                        addflag(flags, (a + ap) * w + u);
+                        addflag(flags, (a + ap) * w - u);
+                    }
+                    if (printpairs)
+                        printf("pair (a,ap,u):(%lu,%lu,%d)  %lu:%u\n",
+                            a, ap, u, 
+                            (a + ap) * w - u,
+                            (a + ap) * w + u);
+                    pairs++;
+                }
+            }
+            else
+            {
+                //printf("queueing a=%lu in Q[%d]\n", a, abs(q));
+                if (q < 0)
+                {
+                    //printf("queueing a=%lu in Q[%u](%u)\n", a, 2 * w + q, work->Qmap[2 * w + q]);
+                    enqueue(work->Q[work->Qmap[2 * w + q]], a);
+                }
+                else
+                {
+                    //printf("queueing a=%lu in Q[%d]\n", a, q);
+                    enqueue(work->Q[work->Qmap[q]], a);
+                }
+                u = 0;
+            }
+        } while (u > umax);
+
+        pid++;
+    }
+
+    //printf("dumping leftovers in queues\n");
+    // empty queues
+    for (i = 0; i < R; i++)
+    {
+        //printf("queue %d (%u) has %d elements\n", i, work->Qrmap[i], work->Q[i]->len);
+        int len = work->Q[i]->len;
+        for (j = 0; j < len; j++)
+        {
+            ap = dequeue(work->Q[i]);
+            if (work->Qrmap[i] >= w)
+            {
+                q = 2 * w - work->Qrmap[i];
+
+                pairmap_v[mapid] = 2 * (ap - amin);
+                pairmap_u[mapid] = q;
+                mapid++;
+
+                if (printpairs)
+                    printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                        ap, q,
+                        2 * ap * w - q,
+                        2 * ap * w + q);
+                if (testcoverage)
+                {
+                    addflag(flags, (2 * ap) * w + q);
+                    addflag(flags, (2 * ap) * w - q);
+                }
+            }
+            else
+            {
+                pairmap_v[mapid] = 2 * (ap - amin);
+                pairmap_u[mapid] = work->Qrmap[i];
+                mapid++;
+
+                if (printpairs)
+                    printf("pair (ap,q):(%lu,%d)  %lu:%u\n",
+                        ap, work->Qrmap[i],
+                        2 * ap * w - work->Qrmap[i],
+                        2 * ap * w + work->Qrmap[i]);
+                if (testcoverage)
+                {
+                    addflag(flags, (2 * ap) * w + work->Qrmap[i]);
+                    addflag(flags, (2 * ap) * w - work->Qrmap[i]);
+                }
+            }
+            pairs++;
+        }
+    }
+
+    //amin = (B1 + w) / (2 * w);
+    //printf("amin is now %u (A = %u)\n", amin, 2 * amin * w);
+    //for (i = 0; i < mapid; i++)
+    //{
+    //    printf("pair: %dw+/-%d\n", pairmap_v[i], pairmap_u[i]);
+    //    if (pairmap_u[i] == 0)
+    //    {
+    //        amin = amin + L - U;
+    //        printf("amin is now %u (A = %u)\n", amin, 2 * amin * w);
+    //    }
+    //}
+
+    if (testcoverage)
+    {
+        pid = 0;
+        while (primes[pid] < B1) { pid++; }
+
+        int notcovered = 0;
+        while ((pid < NUM_P) && (primes[pid] < B2))
+        {
+            if (flags[primes[pid]] != 1)
+            {
+                printf("prime %lu not covered!\n", primes[pid]);
+                notcovered++;
+            }
+            pid++;
+        }
+        printf("%d primes not covered during pairing!\n", notcovered);
+    }
+    printf("%u pairs found from %u primes (ratio = %1.2f)\n", 
+        pairs, nump, (double)pairs / (double)nump);
+
+    //free(flags);
+    return mapid;
+}
 

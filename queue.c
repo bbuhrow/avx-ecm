@@ -75,17 +75,18 @@ uint32_t dequeue(Queue_t *Q)
 	else
 	{
 		printf("warning: attempted to dequeue from an empty queue\n");
+        exit(1);
 	}
 
 	return e;
 }
 
-uint32_t peekqueue(Queue_t *Q)
+uint32_t peekqueue(Queue_t *Q, int offset)
 {
 	uint32_t e = -1;
 	if (Q->len > 0)
 	{
-		e = Q->Q[Q->head];
+		e = Q->Q[(Q->head + offset) % Q->sz];
 	}
 	return e;
 }

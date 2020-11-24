@@ -900,7 +900,6 @@ void ecm_stage2_init_work_fcn(void *vptr)
     thread_data_t *udata = (thread_data_t *)tpdata->user_data;
     uint32_t tid = tpdata->tindex;
 
-    //ecm_stage2_init_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
     ecm_stage2_init_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
 
     return;
@@ -912,9 +911,9 @@ void ecm_stage2_work_fcn(void *vptr)
     thread_data_t *udata = (thread_data_t *)tpdata->user_data;
     uint32_t tid = tpdata->tindex;
 
-    ecm_stage2_pair_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
-    //ecm_stage2_pair_inv_new(udata[tid].pairmap_steps, udata[tid].pairmap_v, udata[tid].pairmap_u,
-    //    udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
+    //ecm_stage2_pair_inv(udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
+    ecm_stage2_pair_inv_new(udata[tid].pairmap_steps, udata[tid].pairmap_v, udata[tid].pairmap_u,
+        udata[tid].P, udata[tid].mdata, udata[tid].work, NULL, tid == 0);
 
     return;
 }
@@ -4012,6 +4011,15 @@ void batch_invert_pt_to_bignum(ecm_pt* pts_to_Zinvert, bignum **out,
 //416265588
 
 
+void addflag(uint8_t* flags, int loc)
+{
+    //printf("adding flag to %u\n", loc); fflush(stdout);
+    //if (flags[loc] == 1)
+    //    printf("duplicate location %u\n", loc);
+    flags[loc] = 1;
+    return;
+}
+
 void ecm_stage2_init_inv_good(ecm_pt* P, monty* mdata, ecm_work* work, base_t* primes, int verbose)
 {
     // run Montgomery's PAIR algorithm.  
@@ -5936,6 +5944,8 @@ void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32
     int debug = 0;
     int inverr;
     int mapid;
+    uint8_t* flags;
+    int testcoverage = 1;
 
     uint32_t* rprime_map_U = work->map;
     ecm_pt* Pa = work->Pa;      // non-inverted
@@ -5952,6 +5962,9 @@ void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32
             "w = %u, L = %u, U = %d, umax = %u, amin = %u\n",
             2 * amin * w, w, L, U, umax, amin);
     }
+
+    if (testcoverage)
+        flags = (uint8_t*)calloc((10000 + STAGE2_MAX), sizeof(uint8_t));
 
     for (mapid = 0; mapid < pairmap_steps; mapid++)
     {
@@ -6002,6 +6015,15 @@ void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32
             pa = pairmap_v[mapid];
             pb = pairmap_u[mapid];
 
+            printf("accumulate %dw +/- %d => %lu:%lu\n", pa, pb,
+                ((amin + pa) * 2 * w - pb), ((amin + pa) * 2 * w + pb));
+
+            if (testcoverage)
+            {
+                addflag(flags, (amin + pa) * 2 * w - pb);
+                addflag(flags, (amin + pa) * 2 * w + pb);
+            }
+
             if ((((amin + pa) * 2 * w - pb) == 29628881) ||
                 (((amin + pa) * 2 * w + pb) == 29628881))
             {
@@ -6012,13 +6034,28 @@ void ecm_stage2_pair_inv_new(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32
             if (rprime_map_U[pb] == 0)
                 printf("pb=%d doesn't exist\n", pb);
             
-            //printf("accumulate %dw +/- %d => %lu:%lu\n", pa, pb,
-            //    ((amin + pa) * 2 * w - pb), ((amin + pa) * 2 * w + pb));
+            
             CROSS_PRODUCT_INV;
             work->paired++;
         }
+    }
 
-        
+    if (testcoverage)
+    {
+        pid = 0;
+        while (PRIMES[pid] < STAGE1_MAX) { pid++; }
+
+        int notcovered = 0;
+        while ((pid < NUM_P) && (PRIMES[pid] < STAGE2_MAX))
+        {
+            if (flags[PRIMES[pid]] != 1)
+            {
+                //printf("prime %lu not covered!\n", PRIMES[pid]);
+                notcovered++;
+            }
+            pid++;
+        }
+        printf("%d primes not covered during pairing!\n", notcovered);
     }
 
     pid = NUM_P;
@@ -6044,15 +6081,6 @@ int check_factor(mpz_t Z, mpz_t n, mpz_t f)
 		return 1;
 	}
 	return 0;
-}
-
-void addflag(uint8_t* flags, int loc)
-{
-    //printf("adding flag to %u\n", loc); fflush(stdout);
-    //if (flags[loc] == 1)
-    //    printf("duplicate location %u\n", loc);
-    flags[loc] = 1;
-    return;
 }
 
 uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u, 

@@ -821,7 +821,7 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 		}
 	}
 
-    tdata->work->U = 8; // bestU;
+    tdata->work->U = bestU;
 	tdata->work->L = tdata->work->U * 2;
 
     ecm_work_init(tdata->work);

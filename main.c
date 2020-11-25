@@ -43,6 +43,22 @@ either expressed or implied, of the FreeBSD Project.
 // t-level estimate
 // http://mersenneforum.org/showpost.php?p=427989&postcount=2429
 
+// todo:
+// fix stage2 pairing (done)
+// threading issues?  factor found with one thread that is missed in multi-thread run. sigma=3504364544062095774
+// IFMA and benchmarking
+// Queuing structures in thread 0 only
+// memory issues? (update valgrind? would require building without any avx512)
+// can't find anything after 1st batch in multi-batch loop (related to memory issues? or threading issues?)
+// larger B1 testing (B2 looping)
+// proper command line flags
+// smarter use of primes array when stage 2 needs multiple ranges
+// test script - other inputs, other B1/B2, check for correct factors
+// options to control memory use (KNL)
+// option to run gmp-ecm stage2 hybrid plan
+// -power 2
+// -power N
+
 
 uint32_t spRand(uint64_t *lcg_state, uint32_t lower, uint32_t upper);
 void thread_init(thread_data_t *tdata, monty *mdata);
@@ -745,6 +761,11 @@ int main(int argc, char **argv)
         free(tdata[i].work);
         free(tdata[i].P);
         free(tdata[i].sigma);
+        if (i == 0)
+        {
+            free(tdata[i].pairmap_u);
+            free(tdata[i].pairmap_v);
+        }
 	}
 
     // clean up local/global data
@@ -765,18 +786,26 @@ void thread_init(thread_data_t *tdata, monty *mdata)
     tdata->work = (ecm_work *)malloc(sizeof(ecm_work));
     tdata->P = (ecm_pt *)malloc(sizeof(ecm_pt));
     tdata->sigma = (uint64_t *)malloc(VECLEN * sizeof(uint64_t));
+#ifdef USE_STAGE2_REF
     uint32_t D = tdata->work->D = 1155;
     int i, j;
-
-    //for (j = 0, i = 0; i < 2 * D; i++)
-    //{
-    //    if (spGCD(i, 2 * D) == 1)
-    //    {
-    //        j++;
-    //    }
-    //}
-
     tdata->work->R = 480 + 3;
+#else
+    uint32_t D = tdata->work->D = 2310;
+
+    int i, j;
+
+    for (j = 0, i = 0; i < 2 * D; i++)
+    {
+        if (spGCD(i, 2 * D) == 1)
+        {
+            j++;
+        }
+    }
+
+    tdata->work->R = j + 3;
+#endif
+    
 
 	// decide on the stage 2 parameters.  Larger U means
 	// more memory and more setup overhead, but more prime pairs.
@@ -818,7 +847,11 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 		}
 	}
 
+#ifdef USE_STAGE2_REF
+    tdata->work->U = 8;
+#else
     tdata->work->U = bestU;
+#endif
 	tdata->work->L = tdata->work->U * 2;
 
     ecm_work_init(tdata->work);

@@ -41,6 +41,7 @@ either expressed or implied, of the FreeBSD Project.
 #include "queue.h"
 #include <stdint.h>
 
+//#define USE_STAGE2_REF
 //#define HALF_VEC
 #define INV_2_POW_64 5.4210108624275221700372640043497e-20
 

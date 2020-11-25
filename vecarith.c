@@ -246,8 +246,6 @@ void vecmulmod(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mda
 
     __mmask8 scarry_e1 = 0;
     __mmask8 scarry_o1 = 0;
-    __mmask8 scarry_e = 0;
-    __mmask8 scarry_o = 0;
     __mmask16 scarry2;
     __mmask16 scarry;
 
@@ -918,8 +916,6 @@ void vecsqrmod(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
 
     __mmask8 scarry_e1 = 0;
     __mmask8 scarry_o1 = 0;
-    __mmask8 scarry_e = 0;
-    __mmask8 scarry_o = 0;
     __mmask16 scarry2;
     __mmask16 scarry;
 
@@ -2080,7 +2076,7 @@ void vecsqrmod(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
 
 void vecmulmod_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata)
 {
-    int i, j, k;
+    int i, j;
 
     __m512i a0, a1, a2, a3;
     __m512i b0, b1, b2, b3, b4, b5, b6;
@@ -2103,9 +2099,6 @@ void vecmulmod_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, m
 
     __mmask8 scarry_e1 = 0;
     __mmask8 scarry_o1 = 0;
-    __mmask8 scarry_e = 0;
-    __mmask8 scarry_o = 0;
-    __mmask16 scarry2;
     __mmask16 scarry;
 
     // zero the accumulator
@@ -2566,12 +2559,9 @@ void vecaddmod_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
     int i;
 
     __mmask16 carry = 0;
-    __mmask16 mask = 0;
-    __mmask16 mask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
-    __m512i nvec;
     int bshift = mdata->nbits % 32;
     int wshift = mdata->nbits / 32;
 
@@ -2621,7 +2611,6 @@ void vecsubmod_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
 
     __mmask16 carry = 0;
     __mmask16 mask = 0;
-    __mmask16 mask2 = 0;
     __m512i nvec;
     __m512i avec;
     __m512i bvec;
@@ -2643,7 +2632,6 @@ void vecsubmod_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
     mask = carry;
     carry = 0;
     nvec = _mm512_set1_epi32(0xffffffff);
-    __m512i zero = _mm512_set1_epi32(0);
     for (i = 0; i <= wshift; i++)
     {
         cvec = _mm512_load_epi32(c->data + i * VECLEN);
@@ -2673,10 +2661,7 @@ void vec_simul_addsub_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff,
 
     __mmask16 carry = 0;
     __mmask16 borrow = 0;
-    __mmask16 cmask = 0;
-    __mmask16 cmask2 = 0;
     __mmask16 bmask = 0;
-    __mmask16 bmask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
@@ -2722,7 +2707,6 @@ void vec_simul_addsub_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff,
 
     carry = 0;
     nvec = _mm512_set1_epi32(0xffffffffULL);
-    __m512i zero = _mm512_set1_epi32(0);
     for (i = 0; i <= wshift; i++)
     {
         // conditional add
@@ -2755,7 +2739,6 @@ void vec_simul_addsub(bignum *a, bignum *b, bignum *sum, bignum *diff, monty* md
     __mmask16 cmask = 0;
     __mmask16 cmask2 = 0;
     __mmask16 bmask = 0;
-    __mmask16 bmask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
@@ -2897,7 +2880,6 @@ void vecsubmod(bignum *a, bignum *b, bignum *c, monty* mdata)
 
     __mmask16 carry = 0;
     __mmask16 mask = 0;
-    __mmask16 mask2 = 0;
     __m512i nvec;
     __m512i avec;
     __m512i bvec;
@@ -2982,8 +2964,7 @@ uint32_t vec_bignum_mask_lshift_1(bignum * u, uint32_t wmask)
     int i;
     __m512i nextcarry;
     __m512i carry = _mm512_setzero_epi32();
-    __m512i highmask = _mm512_set1_epi32(0x80000000);
-    __m512i word;
+    __m512i word = _mm512_setzero_epi32();
 
     for (i = 0; i < NWORDS; i++)
     {

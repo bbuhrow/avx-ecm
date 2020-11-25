@@ -1192,13 +1192,8 @@ int feval(int funcnum, int nargs)
 	// in the mpz_t array 'operands'.
 	// place return values in operands[0]
 	mpz_t mp1, mp2, mp3, tmp1, tmp2;
-	mpz_t gmpz;
 
 	str_t str;
-	uint32_t i=0;
-	uint64_t n64;
-	uint32_t j,k;
-	uint64_t lower, upper, inc, count;
 
 	mpz_init(mp1);
 	mpz_init(mp2);

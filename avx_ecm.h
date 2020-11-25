@@ -153,7 +153,7 @@ void print_hexbignum(bignum *a, const char *pre);
 void print_hex(bignum *a, const char *pre);
 void print_vechex(base_t *a, int v, int n, const char *pre);
 monty * monty_alloc(void);
-void vec_monty_free(monty *mdata);
+void monty_free(monty *mdata);
 void copy_vec_lane(bignum *src, bignum *dest, int num, int size);
 void vecCopy(bignum * src, bignum * dest);
 void vecCopyn(bignum * src, bignum * dest, int size);

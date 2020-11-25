@@ -85,3 +85,17 @@ uint64_t spRand64(uint64_t *state)
     *state = 6364136223846793005ULL * (*state) + 1442695040888963407ULL;
     return *state;
 }
+
+uint64_t spGCD(uint64_t x, uint64_t y)
+{
+    uint64_t a, b, c;
+    a = x; b = y;
+    while (b != 0)
+    {
+        c = a % b;
+        a = b;
+        b = c;
+    }
+    return a;
+}
+

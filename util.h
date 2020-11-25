@@ -54,6 +54,8 @@ either expressed or implied, of the FreeBSD Project.
 #define align_free free
 #endif
 
+uint64_t spGCD(uint64_t x, uint64_t y);
+
 // random
 uint64_t hash64(uint64_t in);
 uint64_t lcg_rand(uint64_t *lcg_state);

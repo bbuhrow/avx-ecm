@@ -283,10 +283,9 @@ __m512i __inline _mm512_mask_sbb_epi52(__m512i a, __mmask8 m, __mmask8 c, __m512
 
 void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s, monty* mdata)
 {
-    int i, j, k;
+    int i, j;
 
     // needed in loops
-    __m512i i0, i1;
     __m512i a0, a1, a2, a3;                                     // 4
     __m512i b0, b1, b2, b3, b4, b5, b6;                         // 11
     __m512i te0, te1, te2, te3, te4, te5, te6, te7;             // 19
@@ -299,10 +298,7 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
     // needed after loops
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
-    __m512i hiword = _mm512_set1_epi64(0x000000000000001);
     __m512i zero = _mm512_set1_epi64(0);
-    __mmask8 scarry_e = 0;
-    __mmask8 scarry2;
     __mmask8 scarry;
 
     // deal with the sign
@@ -1027,7 +1023,6 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
     bignum* b = a;
 
     // needed in loops
-    __m512i i0, i1;
     __m512i a0, a1, a2, a3;                                     // 4
     __m512i b0, b1, b2, b3, b4, b5, b6;                         // 11
     __m512i te0, te1, te2, te3, te4, te5, te6, te7;             // 19
@@ -1040,10 +1035,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
     // needed after loops
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
-    __m512i hiword = _mm512_set1_epi64(0x000000000000001);
     __m512i zero = _mm512_set1_epi64(0);
-    __mmask8 scarry_e = 0;
-    __mmask8 scarry2;
     __mmask8 scarry;
 
     // deal with the sign
@@ -2432,9 +2424,7 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
     __m512i nhatvec_e = _mm512_load_epi64(mdata->vrho);
-    __m512i hiword = _mm512_set1_epi64(0x000000000000001);
     __m512i zero = _mm512_set1_epi64(0);
-    __mmask8 scarry_e = 0;
     __mmask8 scarry2;
     __mmask8 scarry;
 
@@ -3057,13 +3047,13 @@ void vecredc52_base(bignum *a, bignum *c, bignum *n, bignum *s, monty*mdata)
 {
     // taking a number 'a' out of Montgomery representation: REDC on an
     // input of size NWORDS.
-    int i, j, k;
+    int i;
 
     // needed in loops
     __m512i i0, i1;
     __m512i a0, a1, carry, q;                                     // 4
     __m512i b0;
-    __m512d prod1_hd, prod2_hd;                 // 23
+    __m512d prod1_hd;                 // 23
     __m512d prod1_ld, prod2_ld;        // 28
     __m512d dbias = _mm512_castsi512_pd(_mm512_set1_epi64(0x4670000000000000ULL));
     __m512i vbias1 = _mm512_set1_epi64(0x4670000000000000ULL);  // 31
@@ -3143,13 +3133,13 @@ void vecredc52_base(bignum *a, bignum *c, bignum *n, bignum *s, monty*mdata)
 
 void vecmulmod52_1(bignum *a, base_t *b, bignum *c, bignum *n, bignum *s, monty*mdata)
 {
-    int i, j, k;
+    int i;
 
     // needed in loops
     __m512i i0, i1;
     __m512i a0, a1, carry, q;                                     // 4
     __m512i b0;
-    __m512d prod1_hd, prod2_hd;                 // 23
+    __m512d prod1_hd;                 // 23
     __m512d prod1_ld, prod2_ld;        // 28
     __m512d dbias = _mm512_castsi512_pd(_mm512_set1_epi64(0x4670000000000000ULL));
     __m512i vbias1 = _mm512_set1_epi64(0x4670000000000000ULL);  // 31
@@ -3258,12 +3248,11 @@ void vecmul52_1(bignum* a, __m512i b, bignum* c, bignum* n, bignum* s, monty* md
 {
     // unsigned multiply a * b, where b is a single base_t digit.
     // resulting in a NWORDS+1 size result.
-    int i, j, k;
+    int i;
 
     // needed in loops
-    __m512i i0, i1;
-    __m512i a0, a1, carry, q;                                     // 4
-    __m512d prod1_hd, prod2_hd;                 // 23
+    __m512i a0, carry;                                     // 4
+    __m512d prod1_hd;                 // 23
     __m512d prod1_ld, prod2_ld;        // 28
     __m512d dbias = _mm512_castsi512_pd(_mm512_set1_epi64(0x4670000000000000ULL));
     __m512i vbias1 = _mm512_set1_epi64(0x4670000000000000ULL);  // 31
@@ -3273,8 +3262,6 @@ void vecmul52_1(bignum* a, __m512i b, bignum* c, bignum* n, bignum* s, monty* md
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1;
     __m512i zero = _mm512_set1_epi64(0);
-    __mmask8 scarry2;
-    __mmask8 scarry;
 
     carry = zero;
     a0 = _mm512_load_epi64(a->data);
@@ -3320,9 +3307,7 @@ void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty*mdata)
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
     __m512i nhatvec_e = _mm512_load_epi64(mdata->vrho);
-    __m512i hiword = _mm512_set1_epi64(0x000000000000001);
     __m512i zero = _mm512_set1_epi64(0);
-    __mmask8 scarry_e = 0;
     __mmask8 scarry2;
     __mmask8 scarry;
 
@@ -4605,12 +4590,9 @@ void vecaddmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
     int i;
 
     __mmask8 carry = 0;
-    __mmask8 mask = 0;
-    __mmask8 mask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
-    __m512i nvec;
     int bshift = mdata->nbits % 52;
     int wshift = mdata->nbits / 52;
 
@@ -4682,7 +4664,6 @@ void vecsubmod52(bignum *a, bignum *b, bignum *c, monty* mdata)
 
     __mmask8 carry = 0;
     __mmask8 mask = 0;
-    __mmask8 mask2 = 0;
     __m512i nvec;
     __m512i avec;
     __m512i bvec;
@@ -4725,10 +4706,10 @@ void vecsubmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
     __mmask8 carry = 0;
     __mmask8 mask = 0;
     __mmask8 mask2 = 0;
-    __m512i nvec;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
+    __m512i nvec;
     int bshift = mdata->nbits % 52;
     int wshift = mdata->nbits / 52;
 
@@ -4879,7 +4860,6 @@ void vec_simul_addsub52(bignum *a, bignum *b, bignum *sum, bignum *diff, monty* 
     __mmask8 cmask = 0;
     __mmask8 cmask2 = 0;
     __mmask8 bmask = 0;
-    __mmask8 bmask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;
@@ -4971,10 +4951,7 @@ void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff
 
     __mmask8 carry = 0;
     __mmask8 borrow = 0;
-    __mmask8 cmask = 0;
-    __mmask8 cmask2 = 0;
     __mmask8 bmask = 0;
-    __mmask8 bmask2 = 0;
     __m512i avec;
     __m512i bvec;
     __m512i cvec;

@@ -344,14 +344,11 @@ void find_primitive_factor(mpz_t primitive, int exp1, int base1, int64_t coeff2)
 int main(int argc, char **argv)
 {
     thread_data_t *tdata;
-	bignum **f, *n;
     mpz_t gmpn, g, r;
-	uint32_t *siglist;
 	uint32_t numcurves;
 	uint32_t numcurves_per_thread;
 	uint64_t b1;
-	uint32_t i, j;
-	char **nextptr;
+	uint32_t i;
 	monty *montyconst;
 	int threads;    
 	int pid = getpid();
@@ -771,24 +768,24 @@ void thread_init(thread_data_t *tdata, monty *mdata)
     uint32_t D = tdata->work->D = 1155;
     int i, j;
 
-    for (j = 0, i = 0; i < 2 * D; i++)
-    {
-        if (spGCD(i, 2 * D) == 1)
-        {
-            j++;
-        }
-    }
+    //for (j = 0, i = 0; i < 2 * D; i++)
+    //{
+    //    if (spGCD(i, 2 * D) == 1)
+    //    {
+    //        j++;
+    //    }
+    //}
 
-    tdata->work->R = j + 3;
+    tdata->work->R = 480 + 3;
 
 	// decide on the stage 2 parameters.  Larger U means
 	// more memory and more setup overhead, but more prime pairs.
 	// Smaller U means the opposite.  find a good balance.
     // these pairing ratios are estimates based on Montgomery's
     // Pair algorithm Table w assuming w = 1155, for different umax.
-	static double pairing[6] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266};
-    int U[7] = { 2, 3, 4, 6, 8, 12 };
-	double adds[6];
+    static double pairing[6] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266 }; // , 0.5015, 0.4889, 0.4789
+    int U[6] = { 2, 3, 4, 6, 8, 12 }; // , 16, 20, 24
+	double adds[9];
 	double best = 99999999999.;
 	int bestU = 4;
 

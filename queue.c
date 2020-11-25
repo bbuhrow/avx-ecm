@@ -28,6 +28,7 @@ either expressed or implied, of the FreeBSD Project.
 */
 
 #include "queue.h"
+#include <stdio.h>
 
 Queue_t * newQueue(uint32_t sz)
 {

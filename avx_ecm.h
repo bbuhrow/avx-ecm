@@ -41,8 +41,6 @@ either expressed or implied, of the FreeBSD Project.
 #include "queue.h"
 #include <stdint.h>
 
-//#define USE_STAGE2_REF
-//#define HALF_VEC
 #define INV_2_POW_64 5.4210108624275221700372640043497e-20
 
 #if defined (__INTEL_COMPILER)
@@ -237,8 +235,6 @@ typedef struct
 	ecm_pt pt5;
 	uint64_t sigma;
 
-	uint8_t *marks;
-	uint8_t *nmarks;
 	uint32_t *map;
 	ecm_pt *Pa;
 	ecm_pt *Pd;
@@ -263,10 +259,6 @@ typedef struct
 	uint32_t D;
 	uint32_t R;
 
-	uint32_t *Qmap;
-	uint32_t *Qrmap;
-	Queue_t **Q;
-
 } ecm_work;
 
 
@@ -288,6 +280,9 @@ typedef struct
     uint32_t *pairmap_v;
     uint32_t *pairmap_u;
     uint32_t pairmap_steps;
+    uint32_t* Qmap;
+    uint32_t* Qrmap;
+    Queue_t** Q;
 	int save_b1;
 } thread_data_t;
 

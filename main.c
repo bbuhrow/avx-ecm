@@ -45,11 +45,10 @@ either expressed or implied, of the FreeBSD Project.
 
 // todo:
 // fix stage2 pairing (done)
-// threading issues?  factor found with one thread that is missed in multi-thread run. sigma=3504364544062095774
 // IFMA and benchmarking
-// Queuing structures in thread 0 only
+// Queuing structures in thread 0 only (done)
 // memory issues? (update valgrind? would require building without any avx512)
-// can't find anything after 1st batch in multi-batch loop (related to memory issues? or threading issues?)
+// can't find anything after 1st batch in multi-batch loop (related to memory issues?)
 // larger B1 testing (B2 looping)
 // proper command line flags
 // smarter use of primes array when stage 2 needs multiple ranges
@@ -713,10 +712,41 @@ int main(int argc, char **argv)
         tdata[i].tid = i;
 		tdata[i].lcg_state = hash64(stopt.tv_usec + i) + hash64(pid); // 
         tdata[i].total_threads = threads;
+
         if (i == 0)
         {
+            uint32_t D = tdata[i].work->D;
+            int k;
+
             tdata[i].pairmap_v = (uint32_t*)calloc(PRIME_RANGE, sizeof(uint32_t));
             tdata[i].pairmap_u = (uint32_t*)calloc(PRIME_RANGE, sizeof(uint32_t));
+
+            tdata[i].Qmap = (uint32_t*)malloc(2 * D * sizeof(uint32_t));
+            tdata[i].Qrmap = (uint32_t*)malloc(2 * D * sizeof(uint32_t));
+
+            for (j = 0, k = 0; k < 2 * D; k++)
+            {
+                if (spGCD(k, 2 * D) == 1)
+                {
+                    tdata[i].Qmap[k] = j;
+                    tdata[i].Qrmap[j++] = k;
+                }
+                else
+                {
+                    tdata[i].Qmap[k] = (uint32_t)-1;
+                }
+            }
+
+            for (k = j; k < 2 * D; k++)
+            {
+                tdata[i].Qrmap[k] = (uint32_t)-1;
+            }
+
+            tdata[i].Q = (Queue_t * *)malloc(j * sizeof(Queue_t*));
+            for (k = 0; k < j; k++)
+            {
+                tdata[i].Q[k] = newQueue(D);
+            }
         }
         else
         {
@@ -753,6 +783,9 @@ int main(int argc, char **argv)
     // clean up thread data
 	for (i = 0; i < threads; i++)
 	{
+        int j;
+        uint32_t D = tdata[i].work->D;
+
         mpz_clear(tdata[i].factor);
         ecm_work_free(tdata[i].work);
         ecm_pt_free(tdata[i].P);
@@ -761,10 +794,29 @@ int main(int argc, char **argv)
         free(tdata[i].work);
         free(tdata[i].P);
         free(tdata[i].sigma);
+
         if (i == 0)
         {
+            int k;
             free(tdata[i].pairmap_u);
             free(tdata[i].pairmap_v);
+
+            for (j = 0, k = 0; k < 2 * D; k++)
+            {
+                if (spGCD(k, 2 * D) == 1)
+                {
+                    j++;
+                }
+            }
+
+            for (k = 0; k < j; k++)
+            {
+                clearQueue(tdata[i].Q[k]);
+                free(tdata[i].Q[k]);
+            }
+            free(tdata[i].Q);
+            free(tdata[i].Qrmap);
+            free(tdata[i].Qmap);
         }
 	}
 
@@ -786,14 +838,14 @@ void thread_init(thread_data_t *tdata, monty *mdata)
     tdata->work = (ecm_work *)malloc(sizeof(ecm_work));
     tdata->P = (ecm_pt *)malloc(sizeof(ecm_pt));
     tdata->sigma = (uint64_t *)malloc(VECLEN * sizeof(uint64_t));
-#ifdef USE_STAGE2_REF
-    uint32_t D = tdata->work->D = 1155;
-    int i, j;
-    tdata->work->R = 480 + 3;
-#else
     uint32_t D = tdata->work->D = 2310;
 
     int i, j;
+
+    if (STAGE1_MAX <= 8192)
+    {
+        D = tdata->work->D = 210;
+    }
 
     for (j = 0, i = 0; i < 2 * D; i++)
     {
@@ -803,9 +855,7 @@ void thread_init(thread_data_t *tdata, monty *mdata)
         }
     }
 
-    tdata->work->R = j + 3;
-#endif
-    
+    tdata->work->R = j + 3;  
 
 	// decide on the stage 2 parameters.  Larger U means
 	// more memory and more setup overhead, but more prime pairs.
@@ -818,11 +868,7 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 	double best = 99999999999.;
 	int bestU = 4;
 
-	if (STAGE1_MAX <= 8192)
-	{
-		D = tdata->work->D = 210;
-		tdata->work->R = 48 + 3;
-	}
+	
 
 	for (i = 0; i < 6; i++)
 	{
@@ -847,11 +893,7 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 		}
 	}
 
-#ifdef USE_STAGE2_REF
-    tdata->work->U = 8;
-#else
     tdata->work->U = bestU;
-#endif
 	tdata->work->L = tdata->work->U * 2;
 
     ecm_work_init(tdata->work);

@@ -1034,6 +1034,7 @@ void vececm(thread_data_t *tdata)
     // these track the range over which we currently have a prime list.
     uint64_t rangemin;
     uint64_t rangemax;
+    uint64_t sigma_in[VECLEN];
 
 	// timing variables
 	struct timeval stopt;	// stop time of this job
@@ -1083,6 +1084,11 @@ void vececm(thread_data_t *tdata)
 	P_MAX = PRIMES[NUM_P - 1];
 
 	printf("Found %lu primes in range [%lu : %lu]\n", NUM_P, rangemin, rangemax);
+
+    for (j = 0; j < VECLEN; j++)
+    {
+        sigma_in[j] = tdata[i].sigma[j];
+    }
 
 	for (curve = 0; curve < tdata[0].curves; curve += VECLEN)
 	{
@@ -1173,6 +1179,17 @@ void vececm(thread_data_t *tdata)
 			tdata[i].work->last_pid = 0;
             tdata[i].phase_done = 0;
             tdata[i].ecm_phase = 0;
+            for (j = 0; j < VECLEN; j++)
+            {
+                if (sigma_in[j] > 0)
+                {
+                    tdata[i].sigma[j] = sigma_in[j] + curve;
+                }
+                else
+                {
+                    tdata[i].sigma[j] = 0;
+                }
+            }
         }
         tpool_go(tpool_data);
 
@@ -2118,7 +2135,7 @@ int batch_invert_pt_to_bignum(ecm_pt* pts_to_Zinvert, bignum **out,
 //827341355533811391
 //6409678826612327146
 //13778091190526084667
-//10019108749973911965
+//10019108749973911965 *
 //10593445070074576128
 //16327347202299112611
 //13768494887674349585
@@ -2485,10 +2502,7 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
         {
             pa = pairmap_v[mapid] - amin;
             pb = pairmap_u[mapid];
-
-            //printf("amin = %u, acc %d(%d)w +/- %d => %lu\n", amin, pa + amin, pa, pb,
-            //    ((2 * amin + pa) * w - pb));
-
+  
             if (pa >= 2 * L)
             {
                 printf("error: invalid A offset: %d,%d,%u\n", pa, pb, amin);
@@ -2500,13 +2514,6 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
                 addflag(flags, (2 * amin + pa) * w - pb);
                 addflag(flags, (2 * amin + pa) * w + pb);
             }
-
-            //if ((((2 * amin + pa) * w - pb) == 37365437) ||
-            //    (((2 * amin + pa) * w + pb) == 37365437))
-            //{
-            //    printf("\naccumulating amin=%u,pa=%d,pb=%d, p-=%u, p+=%u\n", amin, pa, pb,
-            //        ((2 * amin + pa) * w - pb), ((2 * amin + pa) * w + pb));
-            //}
 
             if (rprime_map_U[pb] == 0)
             {

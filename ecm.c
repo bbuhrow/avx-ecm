@@ -1077,8 +1077,7 @@ void vececm(thread_data_t *tdata)
     rangemax = MIN(STAGE2_MAX + 1000, (uint64_t)PRIME_RANGE);
 
 	if (PRIMES != NULL) { free(PRIMES); PRIMES = NULL; };
-	PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, NULL,
-		rangemin, rangemax, &num_found);
+	PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, rangemin, rangemax, &num_found);
 	NUM_P = num_found;
 	P_MIN = PRIMES[0];
 	P_MAX = PRIMES[NUM_P - 1];
@@ -1087,7 +1086,7 @@ void vececm(thread_data_t *tdata)
 
     for (j = 0; j < VECLEN; j++)
     {
-        sigma_in[j] = tdata[i].sigma[j];
+        sigma_in[j] = tdata[0].sigma[j];
     }
 
 	for (curve = 0; curve < tdata[0].curves; curve += VECLEN)
@@ -1160,8 +1159,7 @@ void vececm(thread_data_t *tdata)
             rangemax = MIN(STAGE2_MAX + 1000, (uint64_t)PRIME_RANGE);
 
             if (PRIMES != NULL) { free(PRIMES); PRIMES = NULL; };
-            PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, NULL,
-                rangemin, rangemax, &num_found);
+            PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, rangemin, rangemax, &num_found);
             NUM_P = num_found;
             P_MIN = PRIMES[0];
             P_MAX = PRIMES[NUM_P - 1];
@@ -1215,8 +1213,7 @@ void vececm(thread_data_t *tdata)
                 rangemax = MIN(STAGE2_MAX + 1000, rangemin + (uint64_t)PRIME_RANGE);
 
 				if (PRIMES != NULL) { free(PRIMES); PRIMES = NULL; };
-				PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, NULL,
-                    rangemin, rangemax, &num_found);
+				PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, rangemin, rangemax, &num_found);
 				NUM_P = num_found;
 				P_MIN = PRIMES[0];
 				P_MAX = PRIMES[NUM_P - 1];
@@ -1433,8 +1430,7 @@ void vececm(thread_data_t *tdata)
                     rangemax = MIN(STAGE2_MAX + 1000, p + (uint64_t)PRIME_RANGE);
 
 					if (PRIMES != NULL) { free(PRIMES); PRIMES = NULL; };
-                    PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, NULL,
-                        rangemin, rangemax, &num_found);
+                    PRIMES = GetPRIMESRange(spSOEprimes, szSOEp, rangemin, rangemax, &num_found);
 					NUM_P = num_found;
 					P_MIN = PRIMES[0];
 					P_MAX = PRIMES[NUM_P - 1];
@@ -1454,11 +1450,12 @@ void vececm(thread_data_t *tdata)
                 for (i = 0; i < threads; i++)
                 {
                     tdata[i].pairmap_steps = tdata[0].pairmap_steps;
-                    tdata[i].work->amin = (p + tdata[i].work->D) / (2 * tdata[i].work->D);
+                    tdata[i].work->amin = tdata[0].work->amin;
                     tdata[i].phase_done = 0;
                     tdata[i].ecm_phase = 3;
                 }
                 tpool_go(tpool_data);
+                printf("\nlast amin: %u\n", tdata[0].work->amin);
 
 				if (tdata[0].work->last_pid == NUM_P)
 				{
@@ -2216,11 +2213,6 @@ int ecm_stage2_init(ecm_pt* P, monty* mdata, ecm_work* work, int verbose)
     bignum* acc = work->stg2acc;
     int lastMapID;
 
-    mpz_t gmptmp, gmptmp2, gmpn;
-    mpz_init(gmptmp);
-    mpz_init(gmptmp2);
-    mpz_init(gmpn);
-
     if (verbose == 1)
         printf("\n");
 
@@ -2313,64 +2305,6 @@ int ecm_stage2_init(ecm_pt* P, monty* mdata, ecm_work* work, int verbose)
 
     //printf("B table generated to umax = %d\n", U * D);
 
-    // Pd = [w]Q
-    vecCopy(P->Z, Pd->Z);
-    vecCopy(P->X, Pd->X);
-    next_pt_vec(mdata, work, Pd, wscale * w);
-
-    if (verbose & (debug == 2))
-        printf("Pd = [%u]Q\n", wscale * w);
-
-    //first a value: first multiple of D greater than B1
-    work->A = amin * w * 2;
-
-    //initialize info needed for giant step
-    vecCopy(P->Z, Pa[0].Z);
-    vecCopy(P->X, Pa[0].X);
-    next_pt_vec(mdata, work, &Pa[0], work->A);
-
-    if (verbose & (debug == 2))
-        printf("Pa[0] = [%lu]Q\n", work->A);
-
-    vecCopy(P->Z, work->Pad->Z);
-    vecCopy(P->X, work->Pad->X);
-    next_pt_vec(mdata, work, work->Pad, work->A - wscale * w);
-
-    if (verbose & (debug == 2))
-        printf("Pad = [%lu]Q\n", work->A - wscale * w);
-
-    vecaddmod_ptr(Pa[0].X, Pa[0].Z, work->sum1, mdata);
-    vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, mdata);
-    vecsubmod_ptr(Pa[0].X, Pa[0].Z, work->diff1, mdata);
-    vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, mdata);
-    vec_add(mdata, work, work->Pad, &Pa[1]);
-
-    work->A += wscale * w;
-    if (verbose & (debug == 2))
-        printf("Pa[1] = [%lu]Q\n", work->A);
-
-    for (i = 2; i < 2 * L; i++)
-    {
-        //giant step - use the addition formula for ECM
-        //Pa + Pd
-        //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
-        //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
-        //x- = [a-d]x
-        //z- = [a-d]z
-        vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
-        vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
-        vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
-
-#ifndef DO_STAGE2_INV
-        vecmulmod_ptr(Pa[i].X, Pa[i].Z, work->Paprod[i], work->n, work->tt4, mdata);
-#endif
-
-        work->A += wscale * w;
-        work->ptadds++;
-        if (verbose & (debug == 2))
-            printf("Pa[%d] = [%lu]Q\n", i, work->A);
-    }
-
     // initialize accumulator
     vecCopy(mdata->one, acc);
 
@@ -2378,27 +2312,20 @@ int ecm_stage2_init(ecm_pt* P, monty* mdata, ecm_work* work, int verbose)
     // invert all of the Pb's
     foundDuringInv = batch_invert_pt_inplace(Pb, Pbprod, mdata, work, lastMapID + 1);
 
-    // and invert all of the Pa's into a separate vector
-    foundDuringInv |= batch_invert_pt_to_bignum(Pa, work->Pa_inv, Paprod, mdata, work, 0, 2 * L);
-
     if (doneIfFoundDuringInv && foundDuringInv)
     {
         work->last_pid = -1;
-
-        mpz_clear(gmptmp);
-        mpz_clear(gmptmp2);
-        mpz_clear(gmpn);
-
         return foundDuringInv;
     }
 #endif
 
-    mpz_clear(gmptmp);
-    mpz_clear(gmptmp2);
-    mpz_clear(gmpn);
+    // Pd = [w]Q
+    vecCopy(P->Z, Pd->Z);
+    vecCopy(P->X, Pd->X);
+    next_pt_vec(mdata, work, Pd, wscale * w);
 
     if (verbose & (debug == 2))
-        printf("A table generated to L = %d\n", 2 * L);
+        printf("Pd = [%u]Q\n", wscale * w);
 
     return foundDuringInv;
 }
@@ -2413,16 +2340,18 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
     uint32_t umax = U * w;
     int i, pid;
     uint32_t amin = work->amin;
-    int foundDuringInv;
+    int foundDuringInv = 0;
+    int doneIfFoundDuringInv = 0;
     int mapid;
     uint8_t* flags;
-    int testcoverage = 0;
     int wscale = 1;
+    int debug = 0;
 
     uint32_t* rprime_map_U = work->map;
     ecm_pt* Pa = work->Pa;      // non-inverted
     ecm_pt* Pb = work->Pb;      // inverted
     ecm_pt* Pd = work->Pdnorm;  // non-inverted Pd
+    bignum** Paprod = work->Paprod;
 #ifndef DO_STAGE2_INV
     bignum** Paprod = work->Paprod;
     bignum** Pbprod = work->Pbprod;
@@ -2430,17 +2359,83 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
     bignum* acc = work->stg2acc;
 
     if (verbose == 1)
+    {
         printf("\n");
+    }
+
+    if (1)
+    {
+        //first a value: first multiple of D greater than B1
+        work->A = (uint64_t)amin * (uint64_t)w * 2;
+
+        //initialize info needed for giant step
+        vecCopy(P->Z, Pa[0].Z);
+        vecCopy(P->X, Pa[0].X);
+        next_pt_vec(mdata, work, &Pa[0], work->A);
+
+        if (verbose & (debug == 2))
+            printf("Pa[0] = [%lu]Q\n", work->A);
+
+        vecCopy(P->Z, work->Pad->Z);
+        vecCopy(P->X, work->Pad->X);
+        next_pt_vec(mdata, work, work->Pad, work->A - wscale * w);
+
+        if (verbose & (debug == 2))
+            printf("Pad = [%lu]Q\n", work->A - wscale * w);
+
+        vecaddmod_ptr(Pa[0].X, Pa[0].Z, work->sum1, mdata);
+        vecaddmod_ptr(Pd->X, Pd->Z, work->sum2, mdata);
+        vecsubmod_ptr(Pa[0].X, Pa[0].Z, work->diff1, mdata);
+        vecsubmod_ptr(Pd->X, Pd->Z, work->diff2, mdata);
+        vec_add(mdata, work, work->Pad, &Pa[1]);
+
+        work->A += wscale * w;
+        if (verbose & (debug == 2))
+            printf("Pa[1] = [%lu]Q\n", work->A);
+
+        for (i = 2; i < 2 * L; i++)
+        {
+            //giant step - use the addition formula for ECM
+            //Pa + Pd
+            //x+ = z- * [(x1-z1)(x2+z2) + (x1+z1)(x2-z2)]^2
+            //z+ = x- * [(x1-z1)(x2+z2) - (x1+z1)(x2-z2)]^2
+            //x- = [a-d]x
+            //z- = [a-d]z
+            vecaddsubmod_ptr(Pa[i - 1].X, Pa[i - 1].Z, work->sum1, work->diff1, mdata);
+            vecaddsubmod_ptr(Pd->X, Pd->Z, work->sum2, work->diff2, mdata);
+            vec_add(mdata, work, &Pa[i - 2], &Pa[i]);
+
+#ifndef DO_STAGE2_INV
+            vecmulmod_ptr(Pa[i].X, Pa[i].Z, work->Paprod[i], work->n, work->tt4, mdata);
+#endif
+
+            work->A += wscale * w;
+            work->ptadds++;
+            if (verbose & (debug == 2))
+                printf("Pa[%d] = [%lu]Q\n", i, work->A);
+        }
+
+#ifdef DO_STAGE2_INV
+        // and invert all of the Pa's into a separate vector
+        foundDuringInv |= batch_invert_pt_to_bignum(Pa, work->Pa_inv, Paprod, mdata, work, 0, 2 * L);
+
+        if (doneIfFoundDuringInv && foundDuringInv)
+        {
+            work->last_pid = -1;
+            return; // foundDuringInv;
+        }
+#endif
+
+        if (verbose & (debug == 2))
+            printf("A table generated to L = %d\n", 2 * L);
+    }
 
     if (verbose)
     {
-        printf("commencing stage 2 at A=%u\n"
+        printf("commencing stage 2 at A=%lu\n"
             "w = %u, R = %u, L = %u, U = %d, umax = %u, amin = %u\n",
-            2 * amin * w, w, work->R - 3, L, U, umax, amin);
+            2 * (uint64_t)amin * (uint64_t)w, w, work->R - 3, L, U, umax, amin);
     }
-
-    if (testcoverage)
-        flags = (uint8_t*)calloc((100000 + STAGE2_MAX), sizeof(uint8_t));
 
     for (mapid = 0; mapid < pairmap_steps; mapid++)
     {
@@ -2509,17 +2504,18 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
                 exit(1);
             }
 
-            if (testcoverage)
-            {
-                addflag(flags, (2 * amin + pa) * w - pb);
-                addflag(flags, (2 * amin + pa) * w + pb);
-            }
-
             if (rprime_map_U[pb] == 0)
             {
                 printf("pb=%d doesn't exist\n", pb);
             }
-            
+
+            if ((((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w - (uint64_t)pb) == 6378650689ULL) ||
+                (((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w + (uint64_t)pb) == 6378650689ULL))
+            {
+                printf("\naccumulated %lu @ amin = %u, pa = %d, pb = %d\n", 
+                    6378650689ULL, amin, pa, pb);
+            }
+
 #ifdef DO_STAGE2_INV
             CROSS_PRODUCT_INV;
 #else
@@ -2529,26 +2525,7 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
         }
     }
 
-    if (testcoverage)
-    {
-        pid = 0;
-        while (PRIMES[pid] < STAGE1_MAX) { pid++; }
-
-        int notcovered = 0;
-        while ((pid < NUM_P) && (PRIMES[pid] < STAGE2_MAX))
-        {
-            if (flags[PRIMES[pid]] != 1)
-            {
-                //printf("prime %lu not covered!\n", PRIMES[pid]);
-                notcovered++;
-            }
-            pid++;
-        }
-        printf("%d primes not covered during pairing!\n", notcovered);
-    }
-
     pid = NUM_P;
-
     work->amin = amin;
     work->last_pid = pid;
 
@@ -2582,8 +2559,8 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
     int L = work->L;
     int R = work->R - 3;
     int umax = w * U;
-    int q, mq;
-    uint64_t amin = (B1 + w) / (2 * w);
+    int64_t q, mq;
+    uint64_t amin = work->amin = (B1 + w) / (2 * w);
     uint64_t a, s, ap, u;
     uint32_t pairs = 0;
     uint32_t nump = 0;
@@ -2594,28 +2571,12 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
 
     // gives an index of a queue given a residue mod w
     //printf("Qmap: \n");
-    //for (i = 0; i < w; i++)
-    //{
-    //    printf("%u\n", Qmap[i]);
-    //}
-
     // contains the value of q given an index
     //printf("Qrmap: \n");
-    //for (i = 0; i < w; i++)
-    //{
-    //    printf("%u\n", Qrmap[i]);
-    //}
-
-    //printf("w = %u\n", w);
-    //printf("U = %u\n", U);
-    //printf("L = %u\n", L);
-    //printf("R = %u\n", R);
-    //printf("amin = %u\n", amin);
-    //printf("umax = %u\n", umax);
 
     if (testcoverage)
     {
-        flags = (uint8_t*)calloc((10000 + B2), sizeof(uint8_t));
+        flags = (uint8_t*)xcalloc((10000 + B2), sizeof(uint8_t));
     }
 
     if (verbose)
@@ -2624,7 +2585,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
     }
     
     while (primes[pid] < B1) { pid++; }
-
+    
     while ((pid < NUM_P) && (primes[pid] < B2))
     {
         s = primes[pid];
@@ -2662,7 +2623,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
                             }
                             if (printpairs)
                             {
-                                printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                                printf("pair (ap,q):(%lu,%ld)  %lu:%lu\n",
                                     ap, q,
                                     2 * ap * w - q,
                                     2 * ap * w + q);
@@ -2693,7 +2654,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
                             }
                             if (printpairs)
                             {
-                                printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                                printf("pair (ap,q):(%lu,%u)  %lu:%lu\n",
                                     ap, Qrmap[i],
                                     2 * ap * w - Qrmap[i],
                                     2 * ap * w + Qrmap[i]);
@@ -2747,7 +2708,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
                         }
                         if (printpairs)
                         {
-                            printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                            printf("pair (ap,q):(%lu,%ld)  %lu:%lu\n",
                                 ap, q,
                                 2 * ap * w - qq,
                                 2 * ap * w + qq);
@@ -2771,7 +2732,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
                         }
                         if (printpairs)
                         {
-                            printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                            printf("pair (ap,q):(%lu,%ld)  %lu:%lu\n",
                                 ap, q,
                                 2 * ap * w - qq,
                                 2 * ap * w + qq);
@@ -2839,7 +2800,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
 
                 if (printpairs)
                 {
-                    printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                    printf("pair (ap,q):(%lu,%ld)  %lu:%lu\n",
                         ap, q,
                         2 * ap * w - q,
                         2 * ap * w + q);
@@ -2858,7 +2819,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
 
                 if (printpairs)
                 {
-                    printf("pair (ap,q):(%lu,%d)  %lu:%lu\n",
+                    printf("pair (ap,q):(%lu,%u)  %lu:%lu\n",
                         ap, Qrmap[i],
                         2 * ap * w - Qrmap[i],
                         2 * ap * w + Qrmap[i]);

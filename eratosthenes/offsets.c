@@ -66,7 +66,9 @@ void get_offsets(thread_soedata_t *thread_data)
             {
                 ddata->pbounds[block] = i;
                 if (block < sdata->blocks)
+                {
                     block++;
+                }
                 ddata->lblk_b = ddata->ublk_b + prodN;
                 ddata->ublk_b += sdata->blk_r;
                 ddata->blk_b_sqrt = (uint64_t)(sqrt((int64_t)(ddata->ublk_b + prodN))) + 1;

@@ -44,12 +44,7 @@ either expressed or implied, of the FreeBSD Project.
 // http://mersenneforum.org/showpost.php?p=427989&postcount=2429
 
 // todo:
-// fix stage2 pairing (done)
 // IFMA and benchmarking
-// Queuing structures in thread 0 only (done)
-// memory issues? (update valgrind? would require building without any avx512)
-// can't find anything after 1st batch in multi-batch loop (related to memory issues?)
-// larger B1 testing (B2 looping)
 // proper command line flags
 // smarter use of primes array when stage 2 needs multiple ranges
 // test script - other inputs, other B1/B2, check for correct factors
@@ -538,8 +533,10 @@ int main(int argc, char **argv)
 
     SOE_VFLAG = 0;
 	threads = SOE_THREADS = 1;
-	if (argc >= 5)
+    if (argc >= 5)
+    {
         threads = atoi(argv[4]);
+    }
     //SOE_THREADS = 2;
 
     DO_STAGE2 = 1;
@@ -567,12 +564,13 @@ int main(int argc, char **argv)
 		exit(0);
     }
 
-    szSOEp = 50000000;
+    szSOEp = 100000000;
     numSOEp = tiny_soe(65537, seed_p);
+
 	PRIMES = soe_wrapper(seed_p, numSOEp, 0, szSOEp, 0, &limit);
 
     //save a batch of sieve primes too.
-    spSOEprimes = (uint32_t *)malloc((size_t)(limit * sizeof(uint32_t)));
+    spSOEprimes = (uint32_t *)xmalloc((size_t)(limit * sizeof(uint32_t)));
     for (i = 0; i < limit; i++)
     {
         spSOEprimes[i] = (uint32_t)PRIMES[i];
@@ -593,7 +591,7 @@ int main(int argc, char **argv)
         (int)mpz_sizeinbase(gmpn, 2), threads, numcurves_per_thread);
     printf("Processing in batches of %u primes\n", PRIME_RANGE);
 
-    tdata = (thread_data_t *)malloc(threads * sizeof(thread_data_t));
+    tdata = (thread_data_t *)xmalloc(threads * sizeof(thread_data_t));
     // expects n to be in packed 64-bit form
     montyconst = monty_alloc();
 
@@ -862,8 +860,8 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 	// Smaller U means the opposite.  find a good balance.
     // these pairing ratios are estimates based on Montgomery's
     // Pair algorithm Table w assuming w = 1155, for different umax.
-    static double pairing[6] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266 }; // , 0.5015, 0.4889, 0.4789
-    int U[6] = { 2, 3, 4, 6, 8, 12 }; // , 16, 20, 24
+    static double pairing[9] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266, 0.5015, 0.4889, 0.4789 };
+    int U[9] = { 2, 3, 4, 6, 8, 12, 16, 20, 24 };
 	double adds[9];
 	double best = 99999999999.;
 	int bestU = 4;

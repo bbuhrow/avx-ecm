@@ -257,7 +257,7 @@ typedef struct
 } soe_userdata_t;
 
 // top level sieving code
-uint64_t spSOE(uint32_t *sieve_p, uint32_t num_sp, mpz_t *offset, 
+uint64_t spSOE(uint32_t *sieve_p, uint32_t num_sp,
 	uint64_t lowlimit, uint64_t *highlimit, int count, uint64_t *primes);
 
 // thread ready sieving functions
@@ -285,7 +285,7 @@ void test_soe(int upper);
 
 // interface functions
 uint64_t *GetPRIMESRange(uint32_t *sieve_p, uint32_t num_sp, 
-    mpz_t *offset, uint64_t lowlimit, uint64_t highlimit, uint64_t *num_p);
+    uint64_t lowlimit, uint64_t highlimit, uint64_t *num_p);
 uint64_t *soe_wrapper(uint32_t *sieve_p, uint32_t num_sp, 
 	uint64_t lowlimit, uint64_t highlimit, int count, uint64_t *num_p);
 uint64_t *sieve_to_depth(uint32_t *seed_p, uint32_t num_sp, 
@@ -295,7 +295,7 @@ uint64_t *sieve_to_depth(uint32_t *seed_p, uint32_t num_sp,
 uint64_t estimate_primes_in_range(uint64_t lowlimit, uint64_t highlimit);
 void get_numclasses(uint64_t highlimit, uint64_t lowlimit, soe_staticdata_t *sdata);
 int check_input(uint64_t highlimit, uint64_t lowlimit, uint32_t num_sp, uint32_t *sieve_p,
-    soe_staticdata_t *sdata, mpz_t offset);
+    soe_staticdata_t *sdata);
 uint64_t init_sieve(soe_staticdata_t *sdata);
 void set_bucket_depth(soe_staticdata_t *sdata);
 uint64_t alloc_threaddata(soe_staticdata_t *sdata, thread_soedata_t *thread_data);

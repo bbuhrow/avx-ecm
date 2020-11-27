@@ -98,7 +98,7 @@ void compute_primes_work_fcn(void *vptr)
         {
             for (i = t->startid; i < t->stopid; i += 8)
             {
-                t->linecount = compute_8_bytes_avx2(sdata, t->linecount, t->ddata.primes, i);
+                t->linecount = compute_8_bytes(sdata, t->linecount, t->ddata.primes, i);
             }
         }
     }
@@ -677,6 +677,8 @@ uint32_t compute_8_bytes_avx2(soe_staticdata_t *sdata,
     uint8_t **lines = sdata->lines;
     uint64_t olow = sdata->orig_llimit;
     uint64_t ohigh = sdata->orig_hlimit;
+
+    printf("compute_8_bytes_avx2\n"); fflush(stdout);
 
     if ((byte_offset & 32767) == 0)
     {

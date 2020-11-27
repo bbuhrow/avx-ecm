@@ -52,7 +52,7 @@ void get_numclasses(uint64_t highlimit, uint64_t lowlimit, soe_staticdata_t *sda
 }
 
 int check_input(uint64_t highlimit, uint64_t lowlimit, uint32_t num_sp, uint32_t *sieve_p,
-	soe_staticdata_t *sdata, mpz_t offset)
+	soe_staticdata_t *sdata)
 {
 	int i;
 
@@ -79,68 +79,31 @@ int check_input(uint64_t highlimit, uint64_t lowlimit, uint32_t num_sp, uint32_t
 	//set sieve primes in the local data structure to the ones that were passed in
 	sdata->sieve_p = sieve_p;	
 	
-	if (offset == NULL)
+	//see if we were provided enough primes to do the job
+	sdata->pbound = (uint64_t)(sqrt((int64_t)(highlimit)));
+
+	if (sieve_p[num_sp - 1] < sdata->pbound)
 	{
-		//see if we were provided enough primes to do the job
-		sdata->pbound = (uint64_t)(sqrt((int64_t)(highlimit)));
+		printf("found %d primes, max = %u: not enough sieving primes\n", 
+            num_sp, sieve_p[num_sp - 1]);
 
-		if (sieve_p[num_sp - 1] < sdata->pbound)
-		{
-			printf("found %d primes, max = %u: not enough sieving primes\n", 
-                num_sp, sieve_p[num_sp - 1]);
+        //for (i = 0; i < num_sp; i++)
+        //    printf("%u\n", sieve_p[i]);
 
-            //for (i = 0; i < num_sp; i++)
-            //    printf("%u\n", sieve_p[i]);
-
-			exit(1);
-		}
-
-		//find the highest index that we'll need.  Much of the rest of the code is 
-		//sensitive to this.  Note that this could be slow for large numbers of
-		//sieve primes... could replace with a binary search.
-		for (i=0; i<num_sp; i++)
-		{
-			// stop when we have enough for this input
-			if (sieve_p[i] > sdata->pbound)
-				break;
-		}
-		sdata->pboundi = i;	
-		
-		sdata->offset = NULL;
-		sdata->sieve_range = 0;
+		exit(1);
 	}
-	else
+
+	//find the highest index that we'll need.  Much of the rest of the code is 
+	//sensitive to this.  Note that this could be slow for large numbers of
+	//sieve primes... could replace with a binary search.
+	for (i=0; i<num_sp; i++)
 	{
-		// for ranges with offsets, don't worry if we don't have enough
-		// primes, but still check to see if we have too many.
-		mpz_t tmpz;
-
-		mpz_init(tmpz);
-		mpz_add_ui(tmpz, offset, highlimit);
-		mpz_sqrt(tmpz, tmpz);
-
-		if (mpz_cmp_ui(tmpz, sieve_p[num_sp - 1]) < 0)
-		{
-			// then we were passed too many.  truncate the input list.
-			sdata->pbound = mpz_get_ui(tmpz);
-			for (i=0; i<num_sp; i++)
-			{
-				// stop when we have enough for this input
-				if (sieve_p[i] > sdata->pbound)
-					break;
-			}
-			sdata->pboundi = i;	
-		}
-		else
-		{
-			// use all of 'em.
-			sdata->pbound = sieve_p[num_sp - 1];
-			sdata->pboundi = num_sp;
-		}
-		sdata->offset = offset;
-		mpz_clear(tmpz);
-		sdata->sieve_range = 1;
+		// stop when we have enough for this input
+		if (sieve_p[i] > sdata->pbound)
+			break;
 	}
+	sdata->pboundi = i;			
+	sdata->sieve_range = 0;
 
 	return 0;
 }
@@ -183,35 +146,6 @@ uint64_t init_sieve(soe_staticdata_t *sdata)
     {
         lowlimit = (lowlimit / (numclasses*prodN))*(numclasses*prodN);
         sdata->lowlimit = lowlimit;
-    }
-    else
-    {
-        mpz_t tmpz, tmpz2;
-        mpz_init(tmpz);
-        mpz_init(tmpz2);
-
-        //the start of the range of interest is controlled by offset, not lowlimit
-        //figure out how it needs to change to accomodate sieving
-        mpz_tdiv_q_ui(tmpz, *sdata->offset, numclasses * prodN);
-        mpz_mul_ui(tmpz, tmpz, numclasses * prodN);
-        mpz_sub(tmpz2, *sdata->offset, tmpz);
-
-        //raise the high limit by the amount the offset was lowered, so that
-        //we allocate enough flags to cover the range of interest
-        highlimit += mpz_get_ui(tmpz2);
-        sdata->orig_hlimit += mpz_get_ui(tmpz2);
-
-        //also raise the original lowlimit so that we don't include sieve primes
-        //that we shouldn't when finalizing the process.
-        sdata->orig_llimit += mpz_get_ui(tmpz2);
-
-        //copy the new value to the pointer, which will get passed back to sieve_to_depth
-        mpz_set(*sdata->offset, tmpz);
-        mpz_clear(tmpz);
-        mpz_clear(tmpz2);
-
-        //set the lowlimit to 0; the real start of the range is controlled by offset
-        sdata->lowlimit = 0;
     }
 
     //reallocate flag structure for wheel and block sieving

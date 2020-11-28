@@ -52,8 +52,8 @@ ifeq ($(COMPILER),mingw)
     LIBS = -L/y/projects/factoring/gmp/lib/mingw/x86_64
 else ifeq ($(COMPILER),gcc)
     CC = gcc
-    INC = -I. -I/projects/gmp-6.0.0a/install/include
-    LIBS = -L/projects/gmp-6.0.0a/install/lib
+    INC = -I. -I../../gmp-6.2.1
+    LIBS = -L../../gmp-6.2.1/.libs
 else ifeq ($(COMPILER),gcc730)
     CC = gcc-7.3.0
     INC = -I. -I/sppdg/scratch/buhrow/projects/gmp_install/include
@@ -72,6 +72,9 @@ ifdef DIGITBITS
 	CFLAGS += -DDIGITBITS=$(DIGITBITS)
 endif
 
+OBJ_EXT = .o
+OPT_FLAGS += -mavx
+			
 ifeq ($(KNL),1)
     ifeq ($(COMPILER),icc)
         CFLAGS += -xMIC-AVX512 -DTARGET_KNL
@@ -80,15 +83,24 @@ ifeq ($(KNL),1)
     endif
 	BINNAME := ${BINNAME:%=%_knl}
     OBJ_EXT = .ko
-else
-    ifeq ($(SKYLAKEX),1)
-        OPT_FLAGS += -march=skylake-avx512 -DSKYLAKEX
-        OBJ_EXT = .o
-    else
-        OBJ_EXT = .o
-        OPT_FLAGS += -mavx
-    endif
 endif
+
+ifeq ($(SKYLAKEX),1)
+	OPT_FLAGS += -march=skylake-avx512 -DSKYLAKEX
+	OBJ_EXT = .o
+endif
+    
+    
+ifeq ($(ICELAKE),1)
+	OPT_FLAGS += -march=icelake-client -DIFMA -DICELAKE
+	OBJ_EXT = .o
+endif
+
+ifeq ($(TIGERLAKE),1)
+	OPT_FLAGS += -march=tigerlake -DIFMA
+	OBJ_EXT = .o
+endif
+
 
 ifeq ($(NO_THREADS),1)
     CFLAGS += -DNO_THREADS
@@ -119,7 +131,7 @@ ifeq ($(STATIC),1)
 	CFLAGS += -static-intel
 	LIBS += -L/usr/lib/x86_64-redhat-linux6E/lib64/ /sppdg/scratch/buhrow/projects/gmp_install/lib/libgmp.a
 else
-	LIBS += -lm /sppdg/scratch/buhrow/projects/gmp_install/lib/libgmp.a
+	LIBS += -lm -lgmp -lpthread
 endif
 	
 #--------------------------- file lists -------------------------

@@ -1826,7 +1826,7 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 			c *= q;
 		} while ((c * q) < stg1);
 	
-#ifdef SKYLAKEX
+#if defined( SKYLAKEX ) || defined( ICELAKE ) || defined( TIGERLAKE )
         if ((verbose >= 1) && ((i & 8191) == 0))
 #else
 		if ((verbose >= 1) && ((i & 511) == 0))

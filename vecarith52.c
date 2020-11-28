@@ -289,12 +289,16 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
     __m512i a0, a1, a2, a3;                                     // 4
     __m512i b0, b1, b2, b3, b4, b5, b6;                         // 11
     __m512i te0, te1, te2, te3, te4, te5, te6, te7;             // 19
+	
+#ifndef IFMA
     __m512d prod1_hd, prod2_hd, prod3_hd, prod4_hd;                 // 23
     __m512d prod1_ld, prod2_ld, prod3_ld, prod4_ld, prod5_ld;        // 28
     __m512d dbias = _mm512_castsi512_pd(_mm512_set1_epi64(0x4670000000000000ULL));
     __m512i vbias1 = _mm512_set1_epi64(0x4670000000000000ULL);  // 31
     __m512i vbias2 = _mm512_set1_epi64(0x4670000000000001ULL);  // 31
     __m512i vbias3 = _mm512_set1_epi64(0x4330000000000000ULL);  // 31
+#endif
+
     // needed after loops
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
@@ -357,16 +361,16 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
         b3 = _mm512_load_epi64(b->data + 0 * VECLEN);
 
 #ifdef IFMA
-        VEC_MUL_ACCUM_LOHI(a0, b3, te0, te1);
-        VEC_MUL_ACCUM_LOHI(a1, b3, te2, te3);
-        VEC_MUL_ACCUM_LOHI(a0, b2, te2, te3);
-        VEC_MUL_ACCUM_LOHI(a2, b3, te4, te5);
+        VEC_MUL_ACCUM_LOHI_PD(a0, b3, te0, te1);
+        VEC_MUL_ACCUM_LOHI_PD(a1, b3, te2, te3);
+        VEC_MUL_ACCUM_LOHI_PD(a0, b2, te2, te3);
+        VEC_MUL_ACCUM_LOHI_PD(a2, b3, te4, te5);
 #else
         // ======
-        //VEC_MUL_ACCUM_LOHI(a0, b3, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a1, b3, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a0, b2, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a2, b3, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b3, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b3, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b2, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b3, te4, te5);
         {
             prod5_ld = _mm512_cvtepu64_pd(a0);
             prod1_ld = _mm512_cvtepu64_pd(a1);
@@ -402,16 +406,16 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
 #endif
 
 #ifdef IFMA
-        VEC_MUL_ACCUM_LOHI(a1, b2, te4, te5);
-        VEC_MUL_ACCUM_LOHI(a0, b1, te4, te5);
-        VEC_MUL_ACCUM_LOHI(a1, b1, te6, te7);
-        VEC_MUL_ACCUM_LOHI(a0, b0, te6, te7);
+        VEC_MUL_ACCUM_LOHI_PD(a1, b2, te4, te5);
+        VEC_MUL_ACCUM_LOHI_PD(a0, b1, te4, te5);
+        VEC_MUL_ACCUM_LOHI_PD(a1, b1, te6, te7);
+        VEC_MUL_ACCUM_LOHI_PD(a0, b0, te6, te7);
 #else
         // ======
-        //VEC_MUL_ACCUM_LOHI(a1, b2, te4, te5);
-        //VEC_MUL_ACCUM_LOHI(a0, b1, te4, te5);
-        //VEC_MUL_ACCUM_LOHI(a1, b1, te6, te7);
-        //VEC_MUL_ACCUM_LOHI(a0, b0, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b2, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b1, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b1, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b0, te6, te7);
         {
             prod5_ld = _mm512_cvtepu64_pd(a0);
             prod1_ld = _mm512_cvtepu64_pd(a1);
@@ -447,11 +451,11 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
 #endif
 
 #ifdef IFMA
-        VEC_MUL_ACCUM_LOHI(a3, b3, te6, te7);
-        VEC_MUL_ACCUM_LOHI(a2, b2, te6, te7);
+        VEC_MUL_ACCUM_LOHI_PD(a3, b3, te6, te7);
+        VEC_MUL_ACCUM_LOHI_PD(a2, b2, te6, te7);
 #else
-        //VEC_MUL_ACCUM_LOHI(a3, b3, te6, te7);
-        //VEC_MUL_ACCUM_LOHI(a2, b2, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b3, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b2, te6, te7);
         {
             prod1_ld = _mm512_cvtepu64_pd(a2);
             prod2_ld = _mm512_cvtepu64_pd(a3);
@@ -473,9 +477,8 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
             te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod1_ld));
             te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod2_ld));
         }
-#endif
-
-        // subtract out all of the bias at once.  these are
+		
+		// subtract out all of the bias at once.  these are
         // counts of how many times we have mul_accumulated into each column
         // during the block a*b and final triangular a*b.
         SUB_BIAS_HI(
@@ -488,6 +491,9 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
             i * 4 + 2,
             i * 4 + 3,
             i * 4 + 4);
+#endif
+
+        
 
         // now, do a carry-propagating column summation and store the results.
         {
@@ -598,10 +604,15 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
         b1 = _mm512_load_epi64(b->data + (NWORDS - 2) * VECLEN);
         b2 = _mm512_load_epi64(b->data + (NWORDS - 3) * VECLEN);
 
+#ifdef IFMA
+		VEC_MUL_ACCUM_LOHI_PD(a1, b0, te0, te1);
+        VEC_MUL_ACCUM_LOHI_PD(a2, b1, te0, te1);
+        VEC_MUL_ACCUM_LOHI_PD(a2, b0, te2, te3);
+#else
         // ======
-        //VEC_MUL_ACCUM_LOHI(a1, b0, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a2, b1, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a2, b0, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b0, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b1, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b0, te2, te3);
         {
             prod1_ld = _mm512_cvtepu64_pd(a1);
             prod2_ld = _mm512_cvtepu64_pd(a2);
@@ -628,10 +639,16 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
             te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod4_ld));
             te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
         }
+#endif
 
-        //VEC_MUL_ACCUM_LOHI(a3, b2, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a3, b1, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a3, b0, te4, te5);
+#ifdef IFMA
+		VEC_MUL_ACCUM_LOHI_PD(a3, b2, te0, te1);
+        VEC_MUL_ACCUM_LOHI_PD(a3, b1, te2, te3);
+        VEC_MUL_ACCUM_LOHI_PD(a3, b0, te4, te5);
+#else
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b2, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b1, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b0, te4, te5);
         {
             prod1_ld = _mm512_cvtepu64_pd(a3);
             prod2_ld = _mm512_cvtepu64_pd(b2);
@@ -671,6 +688,7 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
             (2 * NBLOCKS - i - 1) * 4 + 2,
             (2 * NBLOCKS - i - 1) * 4 + 1,
             (2 * NBLOCKS - i - 1) * 4 + 0);
+#endif
 
         // final column accumulation
         {
@@ -1012,6 +1030,12 @@ void vecmulmod52_mersenne(bignum* a, bignum* b, bignum* c, bignum* n, bignum* s,
     return;
 }
 
+void vecsqrmod52_mersenne_bkup(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
+{
+	vecmulmod52_mersenne(a, a, c, n, s, mdata);
+	return;
+}
+
 //#define DEBUG_MERSENNE
 
 void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mdata)
@@ -1026,12 +1050,16 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
     __m512i a0, a1, a2, a3;                                     // 4
     __m512i b0, b1, b2, b3, b4, b5, b6;                         // 11
     __m512i te0, te1, te2, te3, te4, te5, te6, te7;             // 19
+	
+#ifndef ICELAKE
     __m512d prod1_hd, prod2_hd, prod3_hd, prod4_hd;                 // 23
     __m512d prod1_ld, prod2_ld, prod3_ld, prod4_ld, prod5_ld;        // 28
     __m512d dbias = _mm512_castsi512_pd(_mm512_set1_epi64(0x4670000000000000ULL));
     __m512i vbias1 = _mm512_set1_epi64(0x4670000000000000ULL);  // 31
     __m512i vbias2 = _mm512_set1_epi64(0x4670000000000001ULL);  // 31
     __m512i vbias3 = _mm512_set1_epi64(0x4330000000000000ULL);  // 31
+#endif
+
     // needed after loops
     __m512i vlmask = _mm512_set1_epi64(0x000fffffffffffffULL);
     __m512i acc_e0, acc_e1, acc_e2;
@@ -1107,10 +1135,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a2, b2, te0, te1);
-            VEC_MUL_ACCUM_LOHI(a1, b2, te2, te3);
-            VEC_MUL_ACCUM_LOHI(a1, b3, te4, te5);
-            VEC_MUL_ACCUM_LOHI(a0, b3, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a2, b2, te0, te1);
+            VEC_MUL_ACCUM_LOHI_PD(a1, b2, te2, te3);
+            VEC_MUL_ACCUM_LOHI_PD(a1, b3, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a0, b3, te6, te7);
 #else
             //prod1_e = _mm512_mul_epu32(a2, b2);   // te0
             //prod2_e = _mm512_mul_epu32(a1, b2);   // te2
@@ -1157,10 +1185,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a3, b3, te0, te1);
-            VEC_MUL_ACCUM_LOHI(a2, b3, te2, te3);
-            VEC_MUL_ACCUM_LOHI(a2, b4, te4, te5);
-            VEC_MUL_ACCUM_LOHI(a1, b4, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a3, b3, te0, te1);
+            VEC_MUL_ACCUM_LOHI_PD(a2, b3, te2, te3);
+            VEC_MUL_ACCUM_LOHI_PD(a2, b4, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a1, b4, te6, te7);
 #else
             //prod1_e = _mm512_mul_epu32(a3, b3);   // te0
             //prod2_e = _mm512_mul_epu32(a2, b3);   // te2
@@ -1207,10 +1235,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a3, b4, te2, te3);
-            VEC_MUL_ACCUM_LOHI(a3, b5, te4, te5);
-            VEC_MUL_ACCUM_LOHI(a2, b5, te6, te7);
-            VEC_MUL_ACCUM_LOHI(a3, b6, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a3, b4, te2, te3);
+            VEC_MUL_ACCUM_LOHI_PD(a3, b5, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a2, b5, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a3, b6, te6, te7);
 #else
             //prod1_e = _mm512_mul_epu32(a3, b4);  // te2
             //prod2_e = _mm512_mul_epu32(a3, b5);  // te4
@@ -1259,9 +1287,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod1_ld));
             }
 
-#endif
-
-            // all terms so far need to be doubled.  
+			// all terms so far need to be doubled.  
             // but to do that we first need to remove all bias
             // that has been accumulated so far.
             SUB_BIAS_HI(
@@ -1274,6 +1300,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 k * 4 + 3,
                 k * 4 + 3,
                 k * 4 + 4);
+#endif
 
             // now double
             te1 = _mm512_slli_epi64(te1, 1);
@@ -1286,8 +1313,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a1, b1, te0, te1);
-            VEC_MUL_ACCUM_LOHI(a0, b0, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a1, a1, te0, te1);
+            VEC_MUL_ACCUM_LOHI_PD(a0, a0, te4, te5);
 #else
             // finally, accumulate the two non-doubled terms.
             //prod1_e = _mm512_mul_epu32(a1, a1);    // te0
@@ -1325,10 +1352,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             a3 = _mm512_load_epi64(a->data + ((i - j) * BLOCKWORDS + 3) * VECLEN);
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a0, b1, te2, te3);
-            VEC_MUL_ACCUM_LOHI(a0, b2, te4, te5);
-            VEC_MUL_ACCUM_LOHI(a0, b3, te6, te7);
-            VEC_MUL_ACCUM_LOHI(a1, b2, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a0, a1, te2, te3);
+            VEC_MUL_ACCUM_LOHI_PD(a0, a2, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a0, a3, te6, te7);
+            VEC_MUL_ACCUM_LOHI_PD(a1, a2, te6, te7);
 #else
             //prod1_e = _mm512_mul_epu32(a0, a1);    // te2
             //prod2_e = _mm512_mul_epu32(a0, a2);    // te4
@@ -1376,9 +1403,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 prod1_ld = _mm512_fmadd_round_pd(prod1_ld, prod2_ld, prod1_hd, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
                 te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod1_ld));
             }
-#endif
-
-            // all terms so far need to be doubled.  
+			
+			// all terms so far need to be doubled.  
             // but to do that we first need to remove all bias
             // that has been accumulated so far.
             SUB_BIAS_HI(
@@ -1391,6 +1417,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 k * 4 + 1,
                 k * 4 + 1,
                 k * 4 + 2);
+#endif
 
             // now double
             te1 = _mm512_slli_epi64(te1, 1);
@@ -1403,8 +1430,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-            VEC_MUL_ACCUM_LOHI(a0, b0, te0, te1);
-            VEC_MUL_ACCUM_LOHI(a1, b1, te4, te5);
+            VEC_MUL_ACCUM_LOHI_PD(a0, a0, te0, te1);
+            VEC_MUL_ACCUM_LOHI_PD(a1, a1, te4, te5);
 #else
             // finally, accumulate the two non-doubled terms.
             //prod1_e = _mm512_mul_epu32(a0, a0);
@@ -1434,6 +1461,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 
         }
 
+#ifndef IFMA
         // need to remove bias from the two non-doubled terms of the a*a loop.
         SUB_BIAS_HI(
             1,
@@ -1445,6 +1473,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             0,
             1,
             0);
+#endif
 
         // final column accumulation
         {
@@ -1571,10 +1600,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 b4 = _mm512_load_epi64(b->data + (j * BLOCKWORDS + i * BLOCKWORDS + 5) * VECLEN);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a0, b0, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a1, b2, te2, te3);
-                VEC_MUL_ACCUM_LOHI(a1, b1, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a0, b1, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a0, b0, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a1, b2, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a1, b1, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a0, b1, te2, te3);
 #else
                 //prod1_e = _mm512_mul_epu32(a0, b0);        // te0
                 //prod1_e = _mm512_mul_epu32(a1, b1);        // te0
@@ -1619,8 +1648,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 #endif
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a2, b2, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a2, b3, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a2, b2, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a2, b3, te2, te3);
 #else
                 //prod1_e = _mm512_mul_epu32(a2, b2);        // te0
                 //prod1_e = _mm512_mul_epu32(a2, b3);        // te2
@@ -1649,10 +1678,10 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
 #endif
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a0, b2, te4, te5);
-                VEC_MUL_ACCUM_LOHI(a1, b4, te6, te7);
-                VEC_MUL_ACCUM_LOHI(a1, b3, te4, te5);
-                VEC_MUL_ACCUM_LOHI(a0, b3, te6, te7);
+                VEC_MUL_ACCUM_LOHI_PD(a0, b2, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a1, b4, te6, te7);
+                VEC_MUL_ACCUM_LOHI_PD(a1, b3, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a0, b3, te6, te7);
 #else
                 // prod1_e = _mm512_mul_epu32(a0, b2);       // te4
                 // prod1_e = _mm512_mul_epu32(a1, b3);       // te4
@@ -1694,10 +1723,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod1_ld));
                     te6 = _mm512_add_epi64(te6, _mm512_castpd_si512(prod3_ld));
                 }
-#endif
-
-
-                // all terms so far need to be doubled.  
+				
+				// all terms so far need to be doubled.  
                 // but to do that we first need to remove all bias
                 // that has been accumulated so far.
                 SUB_BIAS_HI(
@@ -1710,6 +1737,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     k * 4 + 3,
                     k * 4 + 2,
                     k * 4 + 2);
+#endif
 
                 // now double
                 te1 = _mm512_slli_epi64(te1, 1);
@@ -1722,8 +1750,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a3, b3, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a2, b2, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a3, a3, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a2, a2, te4, te5);
 #else
                 // finally the two non-doubled terms.
                 //prod1_e = _mm512_mul_epu32(a3, a3);    // te0
@@ -1762,8 +1790,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a0, b2, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a0, b1, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a2, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a1, te2, te3);
 #else
                 //k == 0;
                 //prod1_e = _mm512_mul_epu32(a0, a2);      // te0
@@ -1790,9 +1818,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
                     te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
                 }
-#endif
-
-                // all terms so far need to be doubled.  
+				
+				// all terms so far need to be doubled.  
                 // but to do that we first need to remove all bias
                 // that has been accumulated so far.
                 SUB_BIAS_HI(
@@ -1805,6 +1832,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     k * 4 + 1,
                     k * 4 + 0,
                     k * 4 + 0);
+#endif
 
                 // now double
                 te1 = _mm512_slli_epi64(te1, 1);
@@ -1817,8 +1845,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a1, b1, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a0, b0, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a1, a1, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a0, te4, te5);
 #else
                 // finally the two non-doubled terms.
                 //prod1_e = _mm512_mul_epu32(a1, a1);    // te0
@@ -1861,8 +1889,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 a2 = _mm512_load_epi64(a->data + (NWORDS - 3 - j * BLOCKWORDS) * VECLEN);  // {d, 9}
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a0, b2, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a0, b1, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a2, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a1, te2, te3);
 #else
                 //k == 0;
                 //prod1_e = _mm512_mul_epu32(a0, a2);   // te0
@@ -1889,9 +1917,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod3_ld));
                     te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod2_ld));
                 }
-#endif
-
-                // all terms so far need to be doubled.  
+				
+				// all terms so far need to be doubled.  
                 // but to do that we first need to remove all bias
                 // that has been accumulated so far.
                 SUB_BIAS_HI(
@@ -1904,6 +1931,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     j * 4 + 1,
                     j * 4 + 0,
                     j * 4 + 0);
+#endif
 
                 // now double
                 te1 = _mm512_slli_epi64(te1, 1);
@@ -1916,8 +1944,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a1, b1, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a0, b0, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a1, a1, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a0, a0, te4, te5);
 #else
                 // finally, accumulate the two non-doubled terms.
                 //prod1_e = _mm512_mul_epu32(a1, a1);       // te0
@@ -1976,8 +2004,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 VEC_MUL4_ACCUM(a1, b1, b2, b3, b4);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a2, b2, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a2, b3, te2, te3);
+                VEC_MUL_ACCUM_LOHI_PD(a2, b2, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a2, b3, te2, te3);
 #else
                 //prod1_e = _mm512_mul_epu32(a2, b2);    // te0
                 //prod2_e = _mm512_mul_epu32(a2, b3);    // te2
@@ -2003,9 +2031,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     te0 = _mm512_add_epi64(te0, _mm512_castpd_si512(prod2_ld));
                     te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
                 }
-#endif
-
-                // all terms so far need to be doubled.  
+				
+				// all terms so far need to be doubled.  
                 // but to do that we first need to remove all bias
                 // that has been accumulated so far.
                 SUB_BIAS_HI(
@@ -2018,6 +2045,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                     j * 4 + 3,
                     j * 4 + 2,
                     j * 4 + 2);
+#endif
 
                 // now double
                 te1 = _mm512_slli_epi64(te1, 1);
@@ -2030,8 +2058,8 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
                 te6 = _mm512_slli_epi64(te6, 1);
 
 #ifdef IFMA
-                VEC_MUL_ACCUM_LOHI(a3, b3, te0, te1);
-                VEC_MUL_ACCUM_LOHI(a2, b2, te4, te5);
+                VEC_MUL_ACCUM_LOHI_PD(a3, a3, te0, te1);
+                VEC_MUL_ACCUM_LOHI_PD(a2, a2, te4, te5);
 #else
                 // finally, accumulate the two non-doubled terms.
                 //prod1_e = _mm512_mul_epu32(a3, a3);   // te0
@@ -2061,6 +2089,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             }
         }
 
+#ifndef IFMA
         // need to remove bias from the two non-doubled terms of the a*a loop.
         SUB_BIAS_HI(
             1,
@@ -2072,6 +2101,7 @@ void vecsqrmod52_mersenne(bignum* a, bignum* c, bignum* n, bignum* s, monty* mda
             0,
             1,
             0);
+#endif
 
         // final column accumulation
         {
@@ -2477,10 +2507,10 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
         b3 = _mm512_load_epi64(b->data + 0 * VECLEN);
 
         // ======
-        //VEC_MUL_ACCUM_LOHI(a0, b3, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a1, b3, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a0, b2, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a2, b3, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b3, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b3, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b2, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b3, te4, te5);
         {
             prod5_ld = _mm512_cvtepu64_pd(a0);
             prod1_ld = _mm512_cvtepu64_pd(a1);
@@ -2515,10 +2545,10 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
         }
 
         // ======
-        //VEC_MUL_ACCUM_LOHI(a1, b2, te4, te5);
-        //VEC_MUL_ACCUM_LOHI(a0, b1, te4, te5);
-        //VEC_MUL_ACCUM_LOHI(a1, b1, te6, te7);
-        //VEC_MUL_ACCUM_LOHI(a0, b0, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b2, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b1, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b1, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a0, b0, te6, te7);
         {
             prod5_ld = _mm512_cvtepu64_pd(a0);
             prod1_ld = _mm512_cvtepu64_pd(a1);
@@ -2552,8 +2582,8 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
             te4 = _mm512_add_epi64(te4, _mm512_castpd_si512(prod4_ld));
         }
 
-        //VEC_MUL_ACCUM_LOHI(a3, b3, te6, te7);
-        //VEC_MUL_ACCUM_LOHI(a2, b2, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b3, te6, te7);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b2, te6, te7);
         {
             prod1_ld = _mm512_cvtepu64_pd(a2);
             prod2_ld = _mm512_cvtepu64_pd(a3);
@@ -2795,9 +2825,9 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
         b2 = _mm512_load_epi64(b->data + (NWORDS - 3) * VECLEN);
 
         // ======
-        //VEC_MUL_ACCUM_LOHI(a1, b0, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a2, b1, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a2, b0, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a1, b0, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b1, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a2, b0, te2, te3);
         {
             prod1_ld = _mm512_cvtepu64_pd(a1);
             prod2_ld = _mm512_cvtepu64_pd(a2);
@@ -2825,9 +2855,9 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
             te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
         }
 
-        //VEC_MUL_ACCUM_LOHI(a3, b2, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a3, b1, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a3, b0, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b2, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b1, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b0, te4, te5);
         {
             prod1_ld = _mm512_cvtepu64_pd(a3);
             prod2_ld = _mm512_cvtepu64_pd(b2);
@@ -2894,9 +2924,9 @@ void vecmulmod52(bignum *a, bignum *b, bignum *c, bignum *n, bignum *s, monty *m
             te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
         }
 
-        //VEC_MUL_ACCUM_LOHI(a3, b2, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a3, b1, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a3, b0, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b2, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b1, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b0, te4, te5);
         {
             prod1_ld = _mm512_cvtepu64_pd(a3);
             prod2_ld = _mm512_cvtepu64_pd(b2);
@@ -4367,9 +4397,9 @@ void vecsqrmod52(bignum *a, bignum *c, bignum *n, bignum *s, monty*mdata)
             te2 = _mm512_add_epi64(te2, _mm512_castpd_si512(prod3_ld));
         }
 
-        //VEC_MUL_ACCUM_LOHI(a3, b2, te0, te1);
-        //VEC_MUL_ACCUM_LOHI(a3, b1, te2, te3);
-        //VEC_MUL_ACCUM_LOHI(a3, b0, te4, te5);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b2, te0, te1);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b1, te2, te3);
+        //VEC_MUL_ACCUM_LOHI_PD(a3, b0, te4, te5);
         {
             prod1_ld = _mm512_cvtepu64_pd(a3);
             prod2_ld = _mm512_cvtepu64_pd(b2);

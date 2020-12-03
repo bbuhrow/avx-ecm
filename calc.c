@@ -723,14 +723,6 @@ int calc(str_t *in)
 
 	*/
 
-	//////////////////////////////////////////////
-	// as this is primarily a factoring engine frontend, create a factorization 
-	// object and pass it around through all the feval calls.  Those functions
-	// which do factoring will know what to do with it.  If the expression turns 
-	// out to have nothing to do with factorization, then the object will not be
-	// used and can just be freed at the end of this routine.
-	// ///////////////////////////////////////////
-
 	int i,retval,na,func,j,k;
 	bstack_t stk;		//general purpose stack
 	str_t *tmp;			//temporary str_t
@@ -992,7 +984,7 @@ int calc(str_t *in)
 		case AMBIG:
 			// could be a number or a function
 			// if the next character is a number, this is too
-			// else its an operator
+			// else it's an operator
 			//printf("peeking at tok + 1: %d\n",(int)tok[1]);
 			if (get_el_type2(tok[1]) == NUM)
 			{

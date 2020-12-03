@@ -253,8 +253,11 @@ void ecm_work_init(ecm_work *work)
 	uint32_t D = work->D;
 	uint32_t R = work->R;
 
-	work->stg1Add = 0;
-	work->stg1Doub = 0;
+	work->ptadds = 0;
+	work->ptdups = 0;
+    work->numinv = 0;
+    work->numprimes = 0;
+    work->paired = 0;
 
 	work->diff1 = vecInit();
 	work->diff2 = vecInit();
@@ -435,7 +438,7 @@ void vec_add(monty *mdata, ecm_work *work, ecm_pt *Pin, ecm_pt *Pout)
 		vecmulmod_ptr(work->tt1, Pin->Z, Pout->X, work->n, work->tt4, mdata);		//Z * (U + V)^2
 		vecmulmod_ptr(work->tt2, Pin->X, Pout->Z, work->n, work->tt4, mdata);		//x * (U - V)^2
 	}
-	work->stg1Add++;
+	work->ptadds++;
     return;
 }
 
@@ -449,12 +452,29 @@ void vec_duplicate(monty *mdata, ecm_work *work, bignum *insum, bignum *indiff, 
     vecmulmod_ptr(work->tt3, work->s, work->tt2, work->n, work->tt4, mdata);    // t = (A+2)/4 * w
     vecaddmod_ptr(work->tt2, work->tt1, work->tt2, mdata);                    // t = t + V
     vecmulmod_ptr(work->tt2, work->tt3, P->Z, work->n, work->tt4, mdata);       // Z = t*w
-	work->stg1Doub++;
+	work->ptdups++;
     return;
 }
 
-#define ADD 6.0
-#define DUP 5.0
+#define ADD 5.5   // counting squares as 0.75 of a mul
+#define DUP 4.5   // counting squares as 0.75 of a mul
+
+// PRAC with all of the conditions specified.  Prime95 found
+// that removing some of them slightly improves performance for
+// very large inputs.  Testing also revealed a very slight 
+// improvement for the smaller numbers this routine can deal with.
+// To use the original version, define this.
+//#define ORIG_PRAC
+
+#define NV 10  
+    /* 1/val[0] = the golden ratio (1+sqrt(5))/2, and 1/val[i] for i>0
+       is the real number whose continued fraction expansion is all 1s
+       except for a 2 in i+1-st place */
+static double val[NV] =
+{ 0.61803398874989485, 0.72360679774997897, 0.58017872829546410,
+  0.63283980608870629, 0.61242994950949500, 0.62018198080741576,
+  0.61721461653440386, 0.61834711965622806, 0.61791440652881789,
+  0.61807966846989581};
 
 static double
 lucas_cost(uint64_t n, double v)
@@ -468,6 +488,7 @@ lucas_cost(uint64_t n, double v)
 		return (ADD * (double)n);
 	d = n - r;
 	e = 2 * r - n;
+
 	c = DUP + ADD; /* initial duplicate and final addition */
 	while (d != e)
 	{
@@ -477,6 +498,7 @@ lucas_cost(uint64_t n, double v)
 			d = e;
 			e = r;
 		}
+#ifdef ORIG_PRAC
 		if (d - e <= e / 4 && ((d + e) % 3) == 0)
 		{ /* condition 1 */
 			d = (2 * d - e) / 3;
@@ -488,7 +510,10 @@ lucas_cost(uint64_t n, double v)
 			d = (d - e) / 2;
 			c += ADD + DUP; /* one addition, one duplicate */
 		}
-		else if ((d + 3) / 4 <= e)
+        else if ((d + 3) / 4 <= e)
+#else
+		if ((d + 3) / 4 <= e)
+#endif
 		{ /* condition 3 */
 			d -= e;
 			c += ADD; /* one addition */
@@ -504,6 +529,7 @@ lucas_cost(uint64_t n, double v)
 			d /= 2;
 			c += ADD + DUP; /* one addition, one duplicate */
 		}
+#ifdef ORIG_PRAC
 		/* now d is odd and e is even */
 		else if (d % 3 == 0)
 		{ /* condition 6 */
@@ -520,12 +546,18 @@ lucas_cost(uint64_t n, double v)
 			d = (d - e) / 3;
 			c += 3.0 * ADD + DUP; /* three additions, one duplicate */
 		}
+#endif
 		else /* necessarily e is even: catches all cases */
 		{ /* condition 9 */
 			e /= 2;
 			c += ADD + DUP; /* one addition, one duplicate */
 		}
 	}
+
+    if (d != 1)
+    {
+        return 999999999.;
+    }
 
 	return c;
 }
@@ -538,29 +570,18 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 	bignum *s1, *s2, *d1, *d2;
 	base_t *sw_x, *sw_z;
 
-#define NV 10  
-	/* 1/val[0] = the golden ratio (1+sqrt(5))/2, and 1/val[i] for i>0
-	   is the real number whose continued fraction expansion is all 1s
-	   except for a 2 in i+1-st place */
-	static double val[NV] =
-	{ 0.61803398874989485, 0.72360679774997897, 0.58017872829546410,
-	  0.63283980608870629, 0.61242994950949500, 0.62018198080741576,
-	  0.61721461653440386, 0.61834711965622806, 0.61791440652881789,
-	  0.61807966846989581 };
-
-	/* chooses the best value of v */
-	for (i = d = 0, cmin = ADD * (double)c; d < NV; d++)
-	{
-		cost = lucas_cost(c, val[d]);
-		if (cost < cmin)
-		{
-			cmin = cost;
-			i = d;
-		}
-	}
-
-	d = c;
-	r = (uint64_t)((double)d * val[i] + 0.5);
+    /* chooses the best value of v */
+    for (i = d = 0, cmin = ADD * (double)c; d < NV; d++)
+    {
+        cost = lucas_cost(c, val[d]);
+        if (cost < cmin)
+        {
+            cmin = cost;
+            i = d;
+        }
+    }
+    d = c;
+    r = (uint64_t)((double)d * val[i] + 0.5);
 
 	s1 = work->sum1;
 	s2 = work->sum2;
@@ -608,39 +629,40 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			work->pt2.Z->data = sw_z;
 		}
 		/* do the first line of Table 4 whose condition qualifies */
+#ifdef ORIG_PRAC
 		if (d - e <= e / 4 && ((d + e) % 3) == 0)
 		{ /* condition 1 */
 			d = (2 * d - e) / 3;
 			e = (e - d) / 2;
-
+        
             vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
             vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
-
+        
             vec_add(mdata, work, &work->pt3, &work->pt4); // T = A + B (C)
-
+        
             vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s1, d1, mdata);
             vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s2, d2, mdata);
-
+        
             vec_add(mdata, work, &work->pt2, &work->pt5); // T2 = T + A (B)
-
+        
             vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s1, d1, mdata);
             vecaddsubmod_ptr(work->pt4.X, work->pt4.Z, s2, d2, mdata);
-
+        
 			vec_add(mdata, work, &work->pt1, &work->pt2); // B = B + T (A)
-
+        
 			//add3(xT, zT, xA, zA, xB, zB, xC, zC, n, u, v, w); /* T = f(A,B,C) */
 			//add3(xT2, zT2, xT, zT, xA, zA, xB, zB, n, u, v, w); /* T2 = f(T,A,B) */
 			//add3(xB, zB, xB, zB, xT, zT, xA, zA, n, u, v, w); /* B = f(B,T,A) */
 			//mpres_swap(xA, xT2, n);
 			//mpres_swap(zA, zT2, n); /* swap A and T2 */
-
+        
 			sw_x = work->pt1.X->data;
 			sw_z = work->pt1.Z->data;
 			work->pt1.X->data = work->pt5.X->data;
 			work->pt1.Z->data = work->pt5.Z->data;
 			work->pt5.X->data = sw_x;
 			work->pt5.Z->data = sw_z;
-
+        
 		}
 		else if (d - e <= e / 4 && (d - e) % 6 == 0)
 		{ /* condition 2 */
@@ -648,15 +670,18 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			
             vecaddsubmod_ptr(work->pt1.X, work->pt1.Z, s1, d1, mdata);
             vecaddsubmod_ptr(work->pt2.X, work->pt2.Z, s2, d2, mdata);
-
+        
 			vec_add(mdata, work, &work->pt3, &work->pt2);		// B = A + B (C)
 			vec_duplicate(mdata, work, s1, d1, &work->pt1);		// A = 2A
-
+        
 			//add3(xB, zB, xA, zA, xB, zB, xC, zC, n, u, v, w); /* B = f(A,B,C) */
 			//duplicate(xA, zA, xA, zA, n, b, u, v, w); /* A = 2*A */
-
+        
 		}
 		else if ((d + 3) / 4 <= e)
+#else
+        if ((d + 3) / 4 <= e)
+#endif
 		{ /* condition 3 */
 			d -= e;
 			
@@ -714,6 +739,7 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			//duplicate(xA, zA, xA, zA, n, b, u, v, w); /* A = 2*A */
 		}
 		/* now d is odd, e is even */
+#ifdef ORIG_PRAC
 		else if (d % 3 == 0)
 		{ /* condition 6 */
 			d = d / 3 - e;
@@ -823,6 +849,7 @@ void prac(monty *mdata, ecm_work *work, ecm_pt *P, uint64_t c)
 			//duplicate(xT, zT, xA, zA, n, b, u, v, w);
 			//add3(xA, zA, xA, zA, xT, zT, xA, zA, n, u, v, w); /* A = 3*A */
 		}
+#endif
 		else /* necessarily e is even here */
 		{ /* condition 9 */
 			e /= 2;
@@ -1016,6 +1043,37 @@ void array_mul(uint64_t *primes, int num_p, mpz_t piprimes)
 	return;
 }
 
+double test_cost(uint64_t c, double *vopt)
+{
+    int i;
+    double cost, cmin;
+    double v;
+    int numv = 10;
+    uint64_t state = 8137509813759871ULL;
+
+    for (i = 0, cmin = ADD * (double)c; i < numv; i++)
+    {
+        if (i < NV)
+        {
+            v = val[i];
+        }
+        else
+        {
+            state = spRand64(&state);
+            v = (double)state * INV_2_POW_64;
+            v = 0.5 + (0.3) * v;
+        }
+
+        cost = lucas_cost(c, v);
+        if (((i >= 10) && (cost < cmin / 1.5)) || ((i < 10) && (cost < cmin)))
+        {
+            cmin = cost;
+            *vopt = v;
+        }
+    }
+    return cmin;
+}
+
 void vececm(thread_data_t *tdata)
 {
 	//attempt to factor n with the elliptic curve method
@@ -1046,6 +1104,7 @@ void vececm(thread_data_t *tdata)
 	gettimeofday(&fullstartt, NULL);
     mpz_init(gmpt);
     mpz_init(gmpn);
+
 
     // in this function, gmpn is only used to for screen output and to 
     // check factors.  So if this is a Mersenne input, use the original
@@ -1093,62 +1152,6 @@ void vececm(thread_data_t *tdata)
 	{
         uint64_t p;
 
-        if (0)
-        {
-            // clean all work structures since something is impacting our
-            // ability to find factors beyond the first set of curves.
-            for (i = 0; i < threads; i++)
-            {
-                vecClear(tdata[i].work->diff1);
-                vecClear(tdata[i].work->diff2);
-                vecClear(tdata[i].work->sum1);
-                vecClear(tdata[i].work->sum2);
-                vecClear(tdata[i].work->tt1);
-                vecClear(tdata[i].work->tt2);
-                vecClear(tdata[i].work->tt3);
-                vecClear(tdata[i].work->tt4);
-                vecClear(tdata[i].work->tt5);
-                vecClear(tdata[i].work->pt1.X);
-                vecClear(tdata[i].work->pt2.X);
-                vecClear(tdata[i].work->pt3.X);
-                vecClear(tdata[i].work->pt4.X);
-                vecClear(tdata[i].work->pt5.X);
-                vecClear(tdata[i].work->pt1.Z);
-                vecClear(tdata[i].work->pt2.Z);
-                vecClear(tdata[i].work->pt3.Z);
-                vecClear(tdata[i].work->pt4.Z);
-                vecClear(tdata[i].work->pt5.Z);
-                vecClear(tdata[i].work->s);
-                vecClear(tdata[i].work->stg2acc);
-                vecClear(tdata[i].mdata->mtmp1);
-                vecClear(tdata[i].mdata->mtmp2);
-                vecClear(tdata[i].mdata->mtmp3);
-                vecClear(tdata[i].mdata->mtmp4);
-                //vecClear(tdata[i].work->n);
-
-                for (j = 0; j < (2 * tdata[0].work->L); j++)
-                {
-                    vecClear(tdata[i].work->Paprod[j]);
-                    vecClear(tdata[i].work->Pa_inv[j]);
-                    vecClear(tdata[i].work->Pa[j].X);
-                    vecClear(tdata[i].work->Pa[j].Z);
-                }
-
-                vecClear(tdata[i].work->Pad->X);
-                vecClear(tdata[i].work->Pad->Z);
-
-                vecClear(tdata[i].work->Pdnorm->X);
-                vecClear(tdata[i].work->Pdnorm->Z);
-
-                for (j = 0; j < tdata[0].work->U * (tdata[0].work->R + 1); j++)
-                {
-                    vecClear(tdata[i].work->Pb[j].X);
-                    vecClear(tdata[i].work->Pb[j].Z);
-                    vecClear(tdata[i].work->Pbprod[j]);
-                }
-            }
-        }
-
         // get a new batch of primes if:
         // - the current range starts after B1
         // - the current range ends after B1 AND the range isn't maximal length
@@ -1172,8 +1175,8 @@ void vececm(thread_data_t *tdata)
         // parallel curve building        
         for (i = 0; i < threads; i++)
         {
-			tdata[i].work->stg1Add = 0;
-			tdata[i].work->stg1Doub = 0;
+			tdata[i].work->ptadds = 0;
+			tdata[i].work->ptdups = 0;
 			tdata[i].work->last_pid = 0;
             tdata[i].phase_done = 0;
             tdata[i].ecm_phase = 0;
@@ -1230,7 +1233,7 @@ void vececm(thread_data_t *tdata)
 			printf("Commencing Stage 1 @ prime %lu\n", P_MIN);
             tpool_go(tpool_data);
 
-#if 0
+#if 1
             if (PRIMES[tdata[0].work->last_pid] < STAGE1_MAX)
             {
                 sprintf(fname, "checkpoint.txt");
@@ -1476,8 +1479,8 @@ void vececm(thread_data_t *tdata)
             t_time = my_difftime(&startt, &stopt);
             printf("\n");
             printf("Stage 2 took %1.4f seconds\n", t_time);
-            printf("performed %u point-additions and %u point-doubles in stage 2\n",
-				tdata[0].work->ptadds + tdata[0].work->stg1Add, tdata[0].work->stg1Doub);
+            printf("performed %u pt-adds, %u inversions, and %u pair-muls in stage 2\n",
+				tdata[0].work->ptadds, tdata[0].work->numinv, tdata[0].work->paired);
 
             for (j = 0; j < threads; j++)
             {
@@ -1805,6 +1808,8 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 	int i;
 	uint64_t q;
 	uint64_t stg1 = STAGE1_MAX;
+    int list1 = 0;
+    int list2 = 0;
 
 	// handle the only even case 
 	q = 2;
@@ -1822,8 +1827,8 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 	
 		q = PRIMES[i];
 		do {
-			prac(mdata, work, P, q);
-			c *= q;
+            prac(mdata, work, P, q);
+            c *= q;
 		} while ((c * q) < stg1);
 	
 #if defined( SKYLAKEX ) || defined( ICELAKE ) || defined( TIGERLAKE )
@@ -1842,7 +1847,7 @@ void ecm_stage1(monty *mdata, ecm_work *work, ecm_pt *P, base_t b1, base_t *prim
 	if (verbose >= 1)
 	{
 		printf("\nStage 1 completed at prime %lu with %u point-adds and %u point-doubles\n", 
-			PRIMES[i-1], work->stg1Add, work->stg1Doub);
+			PRIMES[i-1], work->ptadds, work->ptdups);
 		fflush(stdout);
 	}
 	return;
@@ -1875,6 +1880,8 @@ int batch_invert_pt_inplace(ecm_pt* pts_to_Zinvert,
     mpz_init(gmptmp);
     mpz_init(gmptmp2);
     mpz_init(gmpn);
+
+    work->numinv++;
 
     // here, we have temporary space for B, A is put into the unused Pbprod, and C is Pb.Z.
     // faster batch inversion in three phases, as follows:
@@ -2008,6 +2015,8 @@ int batch_invert_pt_to_bignum(ecm_pt* pts_to_Zinvert, bignum **out,
     mpz_init(gmptmp);
     mpz_init(gmptmp2);
     mpz_init(gmpn);
+
+    work->numinv++;
 
     // here, we have temporary space for B, A is put into the unused Pbprod, and C is Pb.Z.
     // faster batch inversion in three phases, as follows:
@@ -2219,8 +2228,8 @@ int ecm_stage2_init(ecm_pt* P, monty* mdata, ecm_work* work, int verbose)
     work->paired = 0;
     work->numprimes = 0;
     work->ptadds = 0;
-    work->stg1Add = 0;
-    work->stg1Doub = 0;
+    work->ptdups = 0;
+    work->numinv = 0;
 
     //stage 2 init
     //Q = P = result of stage 1
@@ -2410,7 +2419,6 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
 #endif
 
             work->A += wscale * w;
-            work->ptadds++;
             if (verbose & (debug == 2))
                 printf("Pa[%d] = [%lu]Q\n", i, work->A);
         }
@@ -2418,7 +2426,7 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
 #ifdef DO_STAGE2_INV
         // and invert all of the Pa's into a separate vector
         foundDuringInv |= batch_invert_pt_to_bignum(Pa, work->Pa_inv, Paprod, mdata, work, 0, 2 * L);
-
+        work->numinv++;
         if (doneIfFoundDuringInv && foundDuringInv)
         {
             work->last_pid = -1;
@@ -2480,7 +2488,6 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
 #endif
 
                 work->A += wscale * w;
-                work->ptadds++;
             }
 
             // amin tracks the Pa[0] position in units of 2 * w, so
@@ -2509,12 +2516,12 @@ void ecm_stage2_pair(uint32_t pairmap_steps, uint32_t *pairmap_v, uint32_t *pair
                 printf("pb=%d doesn't exist\n", pb);
             }
 
-            if ((((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w - (uint64_t)pb) == 6378650689ULL) ||
-                (((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w + (uint64_t)pb) == 6378650689ULL))
-            {
-                printf("\naccumulated %lu @ amin = %u, pa = %d, pb = %d\n", 
-                    6378650689ULL, amin, pa, pb);
-            }
+            //if ((((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w - (uint64_t)pb) == 6378650689ULL) ||
+            //    (((2 * (uint64_t)amin + (uint64_t)pa) * (uint64_t)w + (uint64_t)pb) == 6378650689ULL))
+            //{
+            //    printf("\naccumulated %lu @ amin = %u, pa = %d, pb = %d\n", 
+            //        6378650689ULL, amin, pa, pb);
+            //}
 
 #ifdef DO_STAGE2_INV
             CROSS_PRODUCT_INV;
@@ -2568,6 +2575,7 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
     uint8_t* flags;
     int printpairs = 0;
     int testcoverage = 0;
+    int printpairmap = 0;
 
     // gives an index of a queue given a residue mod w
     //printf("Qmap: \n");
@@ -2582,6 +2590,13 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
     if (verbose)
     {
         printf("commencing pair on range %lu:%lu\n", B1, B2);
+    }
+
+    if (printpairmap || printpairs)
+    {
+        printf("commencing pair at A=%lu\n"
+            "w = %u, R = %u, L = %u, U = %d, umax = %u, amin = %u\n",
+            2 * (uint64_t)amin * (uint64_t)w, w, work->R - 3, L, U, umax, amin);
     }
     
     while (primes[pid] < B1) { pid++; }
@@ -2834,20 +2849,36 @@ uint32_t pair(uint32_t *pairmap_v, uint32_t *pairmap_u,
         }
     }
 
-    //printf("%u pairing steps generated\n", mapid);
-    //amin = (B1 + w) / (2 * w);
-    //printf("amin is now %lu (A = %lu)\n", amin, 2 * amin * w);
-    //for (i = 0; i < mapid; i++)
-    //{
-    //    printf("pair: %uw+/-%u => %lu:%lu\n", pairmap_v[i], pairmap_u[i],
-    //        (amin + pairmap_v[i]) * w - pairmap_u[i],
-    //        (amin + pairmap_v[i]) * w + pairmap_u[i]);
-    //    if (pairmap_u[i] == 0)
-    //    {
-    //        amin = amin + L - U;
-    //        printf("amin is now %u (A = %u)\n", amin, 2 * amin * w);
-    //    }
-    //}
+    if (printpairmap)
+    {
+        printf("%u pairing steps generated\n", mapid);
+        //amin = (B1 + w) / (2 * w);
+        //printf("amin is now %lu (A = %lu)\n", amin, 2 * amin * w);
+        //for (i = 0; i < mapid; i++)
+        //{
+        //    printf("pair: %uw+/-%u => %lu:%lu\n", pairmap_v[i], pairmap_u[i],
+        //        (amin + pairmap_v[i]) * w - pairmap_u[i],
+        //        (amin + pairmap_v[i]) * w + pairmap_u[i]);
+        //    if (pairmap_u[i] == 0)
+        //    {
+        //        amin = amin + L - U;
+        //        printf("amin is now %u (A = %u)\n", amin, 2 * amin * w);
+        //    }
+        //}
+
+        printf("pairmap_v:\n{");
+        for (i = 0; i < mapid; i++)
+        {
+            printf("%u, ", pairmap_v[i]);
+        }
+        printf("}\n");
+        printf("pairmap_u:\n{");
+        for (i = 0; i < mapid; i++)
+        {
+            printf("%u, ", pairmap_u[i]);
+        }
+        printf("}\n");
+    }
 
     if (testcoverage)
     {

@@ -50,6 +50,7 @@ either expressed or implied, of the FreeBSD Project.
 // test script - other inputs, other B1/B2, check for correct factors
 // options to control memory use (KNL)
 // option to run gmp-ecm stage2 hybrid plan
+// option -one (otherwise reduce and continue)
 // -power 2
 // -power N
 
@@ -558,12 +559,12 @@ int main(int argc, char **argv)
     }
         
 
-    if (STAGE1_MAX < 1000)
-    {
-        printf("stage 1 too small\n");
-		exit(0);
-    }
-
+    //if (STAGE1_MAX < 1000)
+    //{
+    //    printf("stage 1 too small\n");
+	//	exit(0);
+    //}
+    //
     szSOEp = 100000000;
     numSOEp = tiny_soe(65537, seed_p);
 
@@ -840,9 +841,34 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 
     int i, j;
 
-    if (STAGE1_MAX <= 8192)
+    if (STAGE1_MAX <= 4096)
+    {
+        D = tdata->work->D = 1155;
+    }
+
+    if (STAGE1_MAX <= 2048)
+    {
+        D = tdata->work->D = 385;
+    }
+
+    if (STAGE1_MAX <= 512)
     {
         D = tdata->work->D = 210;
+    }
+
+    if (STAGE1_MAX <= 256)
+    {
+        D = tdata->work->D = 120;
+    }
+
+    if (STAGE1_MAX <= 128)
+    {
+        D = tdata->work->D = 60;
+    }
+
+    if (STAGE1_MAX <= 60)
+    {
+        D = tdata->work->D = 30;
     }
 
     for (j = 0, i = 0; i < 2 * D; i++)
@@ -859,34 +885,64 @@ void thread_init(thread_data_t *tdata, monty *mdata)
 	// more memory and more setup overhead, but more prime pairs.
 	// Smaller U means the opposite.  find a good balance.
     // these pairing ratios are estimates based on Montgomery's
-    // Pair algorithm Table w assuming w = 1155, for different umax.
-    static double pairing[9] = { 0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266, 0.5015, 0.4889, 0.4789 };
-    int U[9] = { 2, 3, 4, 6, 8, 12, 16, 20, 24 };
-	double adds[9];
+    // Pair algorithm Table w assuming w = 1155, for various umax.
+    //static double pairing[8] = { 0.7,  0.6446, 0.6043, 0.5794, 0.5535, 0.5401, 0.5266, 0.5015};
+    // these ratios are based on observations with larger (more realistic) B1/B2, 
+    // specifically, B2=1e9
+    static double pairing[8] = { 0.8,  0.72, 0.67, 0.63, 0.59, 0.57, 0.55, 0.54 };
+    int U[8] = { 1, 2, 3, 4, 6, 8, 12, 16};
+	double adds[8];
+    int numadds;
+    int numinv;
+    double addcost, invcost;
 	double best = 99999999999.;
 	int bestU = 4;
 
 	
-
-	for (i = 0; i < 6; i++)
+#ifdef TARGET_KNL
+    // for smaller B1, lower U can be better because initialization time
+    // is more significant.  At B1=3M or above the max U is probably best.
+    // If memory is an issue beyond the timings, then U will have to
+    // be smaller.  (e.g., if we do a -maxmem option).
+    for (i = 1; i < 6; i++)
+#else
+	for (i = 1; i < 8; i++)
+#endif
 	{
-        adds[i] = (double)D * (double)U[i];
-		int numadds = (STAGE2_MAX - STAGE1_MAX) / (D);
-		double addcost = 6.0 * ((double)numadds + adds[i]);
-        // estimate number of prime pairs times 1 (1 mul per pair)
-		double paircost = ((double)STAGE2_MAX / log((double)STAGE2_MAX) -
-			(double)STAGE1_MAX / log((double)STAGE1_MAX)) * pairing[i] * 1.0;
+        double paircost;
 
+        // setup cost of Pb.
+        // should maybe take memory into account too, since this array can
+        // get pretty big (especially with multiple threads)?
+        adds[i] = (double)D * (double)U[i];;
+
+        // runtime cost of stage 2
+		numadds = (STAGE2_MAX - STAGE1_MAX) / (D);
+
+        // total adds cost
+		addcost = 6.0 * ((double)numadds + adds[i]);
+
+        // inversion cost - we invert in batches of 2U at a time, taking 3*U muls.
+        // estimating the cost of the inversion as equal to an add, but we do the 
+        // 8 vector elements one at a time.
+        numinv = ((double)numadds / (double)U[i] / 2.0) + 2;
+        invcost = (double)numinv * (VECLEN * 6.0) + (double)numinv * 3.0;
+
+        //// estimate number of prime pairs times 1 (1 mul per pair with batch inversion)
+		//paircost = ((double)STAGE2_MAX / log((double)STAGE2_MAX) -
+		//	(double)STAGE1_MAX / log((double)STAGE1_MAX)) * pairing[i] * 1.0;
+        //
 		//printf("estimating %u primes to pair\n", (uint32_t)((double)STAGE2_MAX / log((double)STAGE2_MAX) -
 		//	(double)STAGE1_MAX / log((double)STAGE1_MAX)));
-		//printf("%d adds + %d setup adds\n", numadds, (int)adds[i]);
+		//printf("%d stg2 adds + %d setup adds + %d inversions\n", numadds, (int)adds[i], numinv);
 		//printf("addcost = %f\n", addcost);
 		//printf("paircost = %f\n", paircost);
-		//printf("totalcost = %f\n", addcost + paircost);
+        //printf("invcost = %f\n", invcost);
+		//printf("totalcost = %f\n", addcost + paircost + invcost);
 
-		if ((addcost + paircost) < best)
+		if ((addcost + paircost + invcost) < best)
 		{
-			best = addcost + paircost;
+			best = addcost + paircost + invcost;
 			bestU = U[i];
 		}
 	}

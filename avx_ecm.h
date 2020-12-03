@@ -245,10 +245,10 @@ typedef struct
 	ecm_pt *Pb;
     ecm_pt *Pdnorm;
 	bignum *stg2acc;
-	uint32_t stg1Add;
-	uint32_t stg1Doub;
     uint32_t paired;
 	uint32_t ptadds;
+    uint32_t ptdups;
+    uint32_t numinv;
 	uint64_t numprimes;
     uint64_t A;
     uint32_t last_pid;

@@ -127,10 +127,10 @@ __m512i __inline _mm512_sbb_epi52(__m512i a, __mmask8 c, __m512i b, __mmask8* co
 
 __m512i __inline _mm512_mask_sbb_epi52(__m512i a, __mmask8 m, __mmask8 c, __m512i b, __mmask8* cout)
 {
-    __m512i t = _mm512_sub_epi64(a, b);
-    *cout = _mm512_cmpgt_epu64_mask(b, a);
+    __m512i t = _mm512_mask_sub_epi64(a, m, a, b);
+    *cout = _mm512_mask_cmpgt_epu64_mask(m, b, a);
     __m512i t2 = _mm512_mask_sub_epi64(a, m, t, _mm512_maskz_set1_epi64(c, 1));
-    *cout = _mm512_kor(*cout, _mm512_cmpgt_epu64_mask(t2, t));
+    *cout = _mm512_kor(*cout, _mm512_mask_cmpgt_epu64_mask(m, t2, t));
     t2 = _mm512_and_epi64(t2, _mm512_set1_epi64(0xfffffffffffffULL));
     return t2;
 }
@@ -4661,7 +4661,7 @@ void vecaddmod52_mersenne(bignum* a, bignum* b, bignum* c, monty* mdata)
         // the modulo is just the low part minus 1 (the carry, if present).
         cvec = _mm512_load_epi64(c->data + 0 * VECLEN);
         //bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
-        bvec = _mm512_set1_epi64(mdata->isMersenne);
+        bvec = _mm512_set1_epi64(-mdata->isMersenne);
         bvec = _mm512_mask_sbb_epi52(cvec, carry, 0, bvec, &carry);
         _mm512_store_epi64(c->data + 0 * VECLEN, bvec);
 
@@ -5030,7 +5030,7 @@ void vec_simul_addsub52_mersenne(bignum* a, bignum* b, bignum* sum, bignum* diff
         // the modulo is just the low part minus 1 (the carry, if present).
         cvec = _mm512_load_epi64(sum->data + 0 * VECLEN);
         //bvec = _mm512_subborrow_epi52(cvec, carry, &carry);
-        bvec = _mm512_set1_epi64(mdata->isMersenne);
+        bvec = _mm512_set1_epi64(-mdata->isMersenne);
         bvec = _mm512_mask_sbb_epi52(cvec, carry, 0, bvec, &carry);
         _mm512_store_epi64(sum->data + 0 * VECLEN, bvec);
 
